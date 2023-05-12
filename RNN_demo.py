@@ -20,11 +20,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] ='0'
 #%%
 
 
-def make_data(N_inputs, N_outputs, N_loadcases):
-
-    np.random.seed(0)
+def make_system(N_inputs, N_outputs):
     
+    np.random.seed(0)
     G = np.empty((N_outputs, N_inputs), dtype = object)
+    
     for i in range(N_outputs):
         for j in range(N_inputs):
             wn = 1 + np.random.rand()
@@ -35,13 +35,14 @@ def make_data(N_inputs, N_outputs, N_loadcases):
                 A = 1e-9
             G[i, j] = signal.TransferFunction([A*wn**2], [1, 2*z*wn, wn**2])
             
-            
-            
+    return G        
+
+def make_inputs(N_inputs, N_loadcases):
+    
     t = np.linspace(0, 100, 1000)
     Nt = len(t)
     
     U = np.zeros((N_loadcases, Nt, N_inputs))
-    Y = np.zeros((N_loadcases, Nt, N_outputs))
     
     for p in range(N_loadcases):
         for k in range(2):
@@ -52,24 +53,34 @@ def make_data(N_inputs, N_outputs, N_loadcases):
                 U[p,:, j] += A[0]*np.heaviside(t-tc[0], 0)
                 U[p,:, j] += A[1]*np.heaviside(t-tc[1], 0)*np.sin(wn[1]*(t-tc[1]))*np.exp(-.2*(t-tc[1]))
     
+    print('done making inputs')
+    
+    return U, t
+
+
+def compute_real_output(G, U, t):
+    
+    Nt = len(t)
+    N_outputs = G.shape[0]
+    N_inputs = G.shape[1]
+    N_loadcases = U.shape[0]
+    
+    Y = np.zeros((N_loadcases, Nt, N_outputs))
     for p in range(N_loadcases):
         for i in range(N_outputs):
             for j in range(N_inputs):
                 t, dY, _ = signal.lsim(G[i, j], U[p, :, j], t)
-                
                 Y[p, :, i] += dY
+    print('done computing actual output via linear simulation')
             
-    U = torch.from_numpy(U).float()
-    Y = torch.from_numpy(Y).float()
-            
-            
-    return U, Y
-    
+    return Y
+
+
+   
 
 def train_test_split(X, test_frac = .3):
     
     N_test = int(np.ceil(X.shape[0]*test_frac))
-    
     X_test = X[:N_test, :, :]
     X_train = X[N_test:, :, :]
     
@@ -89,15 +100,12 @@ class GRUNet(nn.Module):
         #self.relu = nn.ReLU()
         
     def forward(self, x):
-        
         h = self.init_hidden(x.shape[0])
         h = h.data
         out, h = self.gru(x, h)
         #out = self.fc(self.relu(out[:,-1]))
         out = self.fc(out)
         #out = self.relu(out)
-        
-        
         return out, h
     
     def init_hidden(self, batch_size):
@@ -112,14 +120,12 @@ def normalize(X):
 
 
 
-
-
 #%%
 N_inputs = 4
 N_outputs = 10
 N_loadcases = 200
 
-N_epochs = 2000
+N_epochs = 20
 N_layers = 1
 N_hidden_dim = 100
 learn_rate = .01
@@ -137,7 +143,13 @@ else:
     
 
 
-U, Y =  make_data(N_inputs, N_outputs, N_loadcases)
+G = make_system(N_inputs, N_outputs)
+U, t = make_inputs(N_inputs, N_loadcases)
+Y = compute_real_output(G, U, t)
+
+
+U = torch.from_numpy(U).float()
+Y = torch.from_numpy(Y).float()
 
 
 U = normalize(U)
@@ -152,31 +164,24 @@ Y_train = Y_train.to(device)
 Y_test = Y_test.to(device)
 
 
-
 print(f'train inputs: {U_train.shape}, {type(U_train)}')
 print(f'train targets: {Y_train.shape}, {type(Y_train)}')
 print(f'test inputs: {U_test.shape}, {type(U_test)}')
 print(f'test targets: {Y_test.shape}, {type(Y_test)}')
       
 
-
 model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers)
 model.to(device)
-
-
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
 model.train()
 
 
-
 loss_vec = np.empty(N_epochs)
-
 
 for epoch in range(N_epochs):
    
     optimizer.zero_grad()
-    
     out, _ = model(U_train.to(device))
     
     if jaggedness_penalty>0:
@@ -184,27 +189,21 @@ for epoch in range(N_epochs):
     else:
         penalty = 0
     
-    
     loss = criterion(out, Y_train) + penalty
     loss.backward()
     optimizer.step()  
-    
     loss_val = loss.item()
-    
     loss_vec[epoch] = loss_val
-    
     if epoch%10 == 0:
-    
         print(f'epoch {epoch}: loss = {loss_val}, penalty = {100*penalty/loss_val :2f}%')
     
     
-#%%    
+#%% Testing
     
 Y_pred, _ = model(U_test.to(device))    
 loss = criterion(Y_pred, Y_test)  
     
 print(f'test data: loss = {loss.item()}')
-
 
 for p in range(5):
     fig, ax = plt.subplots(3, 1)
