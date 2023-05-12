@@ -97,6 +97,9 @@ class GRUNet(nn.Module):
         
         self.gru = nn.GRU(input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
         self.fc = nn.Linear(hidden_dim, output_dim)
+        self.losses = []
+        self.max_error = None
+        self.mean_error = None
         #self.relu = nn.ReLU()
         
     def forward(self, x):
@@ -120,16 +123,178 @@ def normalize(X):
 
 
 
+
+
+class AutoEncoder(nn.Module):
+    def __init__(self, input_dim, compressed_dim, n_layers = 1):
+        super().__init__()
+        self.compressed_dim = compressed_dim
+        self.fc_encode =   nn.Linear(input_dim, compressed_dim)
+        self.fc_decode =   nn.Linear(compressed_dim, input_dim)      
+        self.losses = []
+        self.max_error = None
+        self.mean_error = None
+        
+    def encoder(self, x):
+        x = self.fc_encode(x)
+        return x
+    
+    def decoder(self, x):
+        x = self.fc_decode(x)
+        return x        
+        
+ 
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+def autoencoder_error_analysis(Y, autoencoder_model_Y, plot = True):
+    Y_encoded = autoencoder_model_Y.encoder(Y)
+    Y_decoded = autoencoder_model_Y.decoder(Y_encoded)
+    print(f' * original shape: {Y.shape}')
+    print(f' * encoded shape: {Y_encoded.shape}')
+    print(f' * decoded shape: {Y_decoded.shape}')
+    
+    encoding_error = Y - Y_decoded
+    max_error = torch.max(torch.abs(encoding_error))
+    mean_error = torch.mean(torch.abs(encoding_error))
+    
+    print(f' * max_error: {max_error}')
+    print(f' * mean_error: {mean_error}')
+    
+    if plot:
+        fig, ax = plt.subplots()
+        for k in range(N_loadcases):
+            ax.plot(encoding_error[k, :, :].cpu().detach().numpy())
+            
+    return max_error, mean_error
+
+def train_autoencoder(inputs, compressed_dim, N_epochs, learn_rate = .01, verbose = True):
+    
+    N_features = inputs.shape[-1]
+    
+    model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
+    
+    # if inputs.shape[1] !=1: 
+    #     inputs = torch.reshape(inputs, (-1, 1, inputs.shape[2]))
+    
+    model.to(device)
+    inputs = inputs.to(device)
+    model.train()
+    loss_vec = np.empty(N_epochs)
+    
+    for epoch in range(N_epochs):
+        optimizer.zero_grad()
+        out = model(inputs)
+        loss = criterion(out, inputs) 
+        loss.backward(retain_graph=True)
+        optimizer.step()  
+        loss_val = loss.item()
+        loss_vec[epoch] = loss_val
+        if epoch%10 == 0 & verbose == True:
+            print(f' * epoch {epoch}: loss = {loss_val}')
+    
+    
+    max_error, mean_error = autoencoder_error_analysis(inputs, model, plot = False)
+    
+    model.loss_final = float(loss_val)
+    model.max_error = float(max_error)
+    model.mean_error = float(mean_error)   
+    
+    return model
+
+
+def plot_autoencoder_sensitivity(all_models):
+    
+    fig, ax = plt.subplots(3, 1)
+    ax[0].plot(all_models.keys(), [x.loss_final for x in all_models.values()])
+    ax[0].set_title('loss')
+    ax[0].set_xlabel('latent dimension')
+
+    ax[1].plot(all_models.keys(), [x.max_error for x in all_models.values()])
+    ax[1].set_title('max error')
+    ax[1].set_xlabel('latent dimension')
+
+    ax[2].plot(all_models.keys(), [x.mean_error for x in all_models.values()])
+    ax[2].set_title('mean error')
+    ax[2].set_xlabel('latent dimension')
+
+    fig.tight_layout()
+    fig.set_dpi(200)
+
+
+def autoencoder_sweep(X, N_trial_dims, N_epochs):
+    
+    all_models = {}
+    for compressed_dim in N_trial_dims:
+        
+        print(f'N = {compressed_dim} latent dimension autoencoder')
+        autoencoder_model  = train_autoencoder(X, compressed_dim, N_epochs, verbose = False)
+        print(f' * loss = {autoencoder_model.loss_final}')
+        print('\n')
+        
+        all_models[compressed_dim] = autoencoder_model
+        
+    plot_autoencoder_sensitivity(all_models)
+    
+    return all_models
+
+
+def train_RNN(inputs,targets, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, jaggedness_penalty = 0):
+    
+    N_inputs = inputs.shape[-1]
+    N_outputs = targets.shape[-1]
+    
+    model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers)
+    model.to(device)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
+    model.train()
+    
+    inputs = inputs.to(device)
+    targets = targets.to(device)
+    
+    for epoch in range(N_epochs):
+        optimizer.zero_grad()
+        out, _ = model(inputs)
+        
+        if jaggedness_penalty>0:
+            penalty =jaggedness_penalty* (out-targets).diff(axis = 1).abs().sum()
+        else:
+            penalty = 0
+        
+        loss = criterion(out, targets) + penalty
+        loss.backward(retain_graph=True)
+        optimizer.step()  
+        loss_val = loss.item()
+        
+        model.losses.append(loss_val)
+        
+        if epoch%10 == 0 and verbose == True:
+            print(f' * epoch {epoch}: loss = {loss_val}, penalty = {100*penalty/loss_val :2f}%')
+    
+    return model
+
+
 #%%
 N_inputs = 4
 N_outputs = 10
-N_loadcases = 200
+N_loadcases = 30
 
-N_epochs = 20
+N_epochs = 2000
 N_layers = 1
 N_hidden_dim = 100
-learn_rate = .01
 jaggedness_penalty = 0#1e-3
+
+N_epochs_autoencoder = 200
+N_trial_dims = [1, 4, 7] # range(1, N_outputs+1)
+
+N_latent_dim_input = 4
+N_latent_dim_output = 7
+
 
 
 
@@ -148,12 +313,12 @@ U, t = make_inputs(N_inputs, N_loadcases)
 Y = compute_real_output(G, U, t)
 
 
-U = torch.from_numpy(U).float()
-Y = torch.from_numpy(Y).float()
-
+U = torch.from_numpy(U).float().to(device)
+Y = torch.from_numpy(Y).float().to(device)
 
 U = normalize(U)
 Y = normalize(Y)
+
 
 U_train, U_test =  train_test_split(U)
 Y_train, Y_test =  train_test_split(Y)
@@ -163,49 +328,46 @@ U_test = U_test.to(device)
 Y_train = Y_train.to(device)
 Y_test = Y_test.to(device)
 
+all_autoencoder_models_Y = autoencoder_sweep(Y_train, N_trial_dims, N_epochs_autoencoder)
+all_autoencoder_models_U = autoencoder_sweep(U_train, N_trial_dims, N_epochs_autoencoder)
 
-print(f'train inputs: {U_train.shape}, {type(U_train)}')
-print(f'train targets: {Y_train.shape}, {type(Y_train)}')
-print(f'test inputs: {U_test.shape}, {type(U_test)}')
-print(f'test targets: {Y_test.shape}, {type(Y_test)}')
+
+autoencoder_model_Y = all_autoencoder_models_Y[N_latent_dim_output]
+autoencoder_model_U = all_autoencoder_models_U[N_latent_dim_input]
+
+
+#%%
+
+Y_train_encoded = autoencoder_model_Y.encoder(Y_train)
+Y_test_encoded = autoencoder_model_Y.encoder(Y_test)
+
+U_train_encoded = autoencoder_model_U.encoder(U_train)
+U_test_encoded = autoencoder_model_U.encoder(U_test)
+
+
+print(f'train inputs: {U_train_encoded.shape}, {type(U_train_encoded)}')
+print(f'train targets: {Y_train_encoded.shape}, {type(Y_train_encoded)}')
+print(f'test inputs: {U_test_encoded.shape}, {type(U_test_encoded)}')
+print(f'test targets: {Y_test_encoded.shape}, {type(Y_test_encoded)}')
       
 
-model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers)
-model.to(device)
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
-model.train()
+
+RNNmodel = train_RNN(inputs = U_train_encoded, targets = Y_train_encoded, N_hidden_dim = N_hidden_dim, N_layers = N_layers, N_epochs = N_epochs)
+    
+fig, ax = plt.subplots(1,1)
+ax.plot(RNNmodel.losses)
+plt.yscale('log')
+fig.set_dpi(200)    
 
 
-loss_vec = np.empty(N_epochs)
-
-for epoch in range(N_epochs):
-   
-    optimizer.zero_grad()
-    out, _ = model(U_train.to(device))
-    
-    if jaggedness_penalty>0:
-        penalty =jaggedness_penalty* (out-Y_train.to(device)).diff(axis = 1).abs().sum()
-    else:
-        penalty = 0
-    
-    loss = criterion(out, Y_train) + penalty
-    loss.backward()
-    optimizer.step()  
-    loss_val = loss.item()
-    loss_vec[epoch] = loss_val
-    if epoch%10 == 0:
-        print(f'epoch {epoch}: loss = {loss_val}, penalty = {100*penalty/loss_val :2f}%')
-    
-    
 #%% Testing
     
-Y_pred, _ = model(U_test.to(device))    
-loss = criterion(Y_pred, Y_test)  
-    
-print(f'test data: loss = {loss.item()}')
+Y_pred_encoded, _ = RNNmodel(U_test_encoded)    
 
-for p in range(5):
+Y_pred = autoencoder_model_Y.decoder(Y_pred_encoded)
+
+
+for p in range(np.min([5, U_test.shape[0]])):
     fig, ax = plt.subplots(3, 1)
     fig.set_dpi(200)
     ax[0].plot(U_test[p, :, :].cpu().detach().numpy())
@@ -215,16 +377,14 @@ for p in range(5):
     ax[1].plot(Y_pred[p, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
     ax[1].set_title(f'outputs ({Y_test.shape[2]})')
 
-    
-    ax[2].plot(Y_pred[p, :, :].cpu().detach().numpy() - Y_test[p, :, :].cpu().detach().numpy())
+    error = Y_pred.cpu().detach().numpy() - Y_test.cpu().detach().numpy()
+    ax[2].plot(error[p, :, :])
     ax[2].set_title(f'error ({Y_test.shape[2]})')
     
     fig.tight_layout()
 
-fig, ax = plt.subplots(1,1)
-ax.plot(loss_vec)
-plt.yscale('log')
-fig.set_dpi(200)
+
+
 #%%
 
 
