@@ -116,8 +116,8 @@ def normalize(X):
 
 #%%
 N_inputs = 4
-N_outputs = 3
-N_loadcases = 20
+N_outputs = 10
+N_loadcases = 200
 
 N_epochs = 2000
 N_layers = 1
@@ -207,17 +207,25 @@ print(f'test data: loss = {loss.item()}')
 
 
 for p in range(5):
-    fig, ax = plt.subplots(2, 1)
+    fig, ax = plt.subplots(3, 1)
+    fig.set_dpi(200)
     ax[0].plot(U_test[p, :, :].cpu().detach().numpy())
+    ax[0].set_title(f'inputs ({U_test.shape[2]})')
     
     ax[1].plot(Y_test[p, :, :].cpu().detach().numpy())
-    ax[1].plot(Y_pred[p, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k')
+    ax[1].plot(Y_pred[p, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
+    ax[1].set_title(f'outputs ({Y_test.shape[2]})')
 
+    
+    ax[2].plot(Y_pred[p, :, :].cpu().detach().numpy() - Y_test[p, :, :].cpu().detach().numpy())
+    ax[2].set_title(f'error ({Y_test.shape[2]})')
+    
+    fig.tight_layout()
 
 fig, ax = plt.subplots(1,1)
 ax.plot(loss_vec)
 plt.yscale('log')
-
+fig.set_dpi(200)
 #%%
 
 
