@@ -128,12 +128,30 @@ def normalize(X):
 class AutoEncoder(nn.Module):
     def __init__(self, input_dim, compressed_dim, n_layers = 1):
         super().__init__()
+        
+        layer_dims = np.ceil(np.exp(np.linspace(np.log(input_dim), np.log(compressed_dim), n_layers+1))).astype(int)
+        
+        encodelist = []
+        decodelist = []
+        for i in range(len(layer_dims)-1):
+            # if i !=0:  # put relu between layers
+            #     encodelist.append(nn.Sigmoid())
+            #     decodelist.append(nn.Sigmoid())
+            encodelist.append(nn.Linear(layer_dims[i], layer_dims[i+1]))
+            decodelist.append(nn.Linear(layer_dims[-i-1], layer_dims[-i-2]))
+            
+        print(encodelist)
+        print(decodelist)
+        self.layer_dims = layer_dims
+        self.input_dim = input_dim
         self.compressed_dim = compressed_dim
-        self.fc_encode =   nn.Linear(input_dim, compressed_dim)
-        self.fc_decode =   nn.Linear(compressed_dim, input_dim)      
+        self.fc_encode =   nn.Sequential(*encodelist)
+        self.fc_decode =   nn.Sequential(*decodelist)    
         self.losses = []
         self.max_error = None
         self.mean_error = None
+        
+        print(self.layer_dims)
         
     def encoder(self, x):
         x = self.fc_encode(x)
@@ -170,11 +188,11 @@ def autoencoder_error_analysis(Y, autoencoder_model_Y, plot = True):
             
     return max_error, mean_error
 
-def train_autoencoder(inputs, compressed_dim, N_epochs, learn_rate = .01, verbose = True):
+def train_autoencoder(inputs, compressed_dim, N_epochs, N_layers_autoencoder, learn_rate = .01, verbose = True):
     
     N_features = inputs.shape[-1]
     
-    model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim)
+    model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim, n_layers = N_layers_autoencoder)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
     
@@ -226,13 +244,13 @@ def plot_autoencoder_sensitivity(all_models):
     fig.set_dpi(200)
 
 
-def autoencoder_sweep(X, N_trial_dims, N_epochs):
+def autoencoder_sweep(X, N_trial_dims, N_epochs, N_layers_autoencoder = 1):
     
     all_models = {}
     for compressed_dim in N_trial_dims:
         
         print(f'N = {compressed_dim} latent dimension autoencoder')
-        autoencoder_model  = train_autoencoder(X, compressed_dim, N_epochs, verbose = False)
+        autoencoder_model  = train_autoencoder(X, compressed_dim, N_epochs, N_layers_autoencoder, verbose = False)
         print(f' * loss = {autoencoder_model.loss_final}')
         print('\n')
         
@@ -279,23 +297,28 @@ def train_RNN(inputs,targets, N_hidden_dim, N_layers, N_epochs, learn_rate = .01
     return model
 
 
-#%%
-N_inputs = 4
-N_outputs = 10
-N_loadcases = 30
+#%% INPUTS
 
-N_epochs = 2000
+# dataset
+N_inputs = 2
+N_outputs = 5
+N_loadcases = 10
+
+#autoencoder
+N_epochs_autoencoder = 500
+N_trial_dims = [1, 4, 7, 20] # range(1, N_outputs+1)
+N_layers_autoencoder = 1
+N_latent_dim_input = 4
+N_latent_dim_output = 7
+
+# RNN
+N_epochs = 500
 N_layers = 1
 N_hidden_dim = 100
 jaggedness_penalty = 0#1e-3
 
-N_epochs_autoencoder = 200
-N_trial_dims = [1, 4, 7] # range(1, N_outputs+1)
 
-N_latent_dim_input = 4
-N_latent_dim_output = 7
-
-
+#%%
 
 
 if torch.cuda.is_available():
@@ -328,8 +351,8 @@ U_test = U_test.to(device)
 Y_train = Y_train.to(device)
 Y_test = Y_test.to(device)
 
-all_autoencoder_models_Y = autoencoder_sweep(Y_train, N_trial_dims, N_epochs_autoencoder)
-all_autoencoder_models_U = autoencoder_sweep(U_train, N_trial_dims, N_epochs_autoencoder)
+all_autoencoder_models_Y = autoencoder_sweep(Y_train, N_trial_dims, N_epochs_autoencoder, N_layers_autoencoder)
+all_autoencoder_models_U = autoencoder_sweep(U_train, N_trial_dims, N_epochs_autoencoder, N_layers_autoencoder)
 
 
 autoencoder_model_Y = all_autoencoder_models_Y[N_latent_dim_output]
@@ -387,5 +410,8 @@ for p in range(np.min([5, U_test.shape[0]])):
 
 #%%
 
-
+model =  torch.nn.Sequential(
+            torch.nn.Linear(10, 2),
+            torch.nn.ReLU(),
+            )
     
