@@ -333,9 +333,6 @@ class NeuralNetworkTimeSeries():
 
     
         self.model = model
-        
-    def predict(self, X):
-        pass 
     
     
     
@@ -344,8 +341,6 @@ class NeuralNetworkTimeSeries():
        error = Y_actual-Y_predicted
         
        
-       
-        
        for p in range(np.min([5, error.shape[0]])):
            fig, ax = plt.subplots(3, 1)
            fig.set_dpi(200)
@@ -359,10 +354,30 @@ class NeuralNetworkTimeSeries():
            ax[2].plot(error[p, :, :].cpu().detach().numpy())
            ax[2].set_title(f'error ({error.shape[-1]})')
            
+           fig.suptitle(f'test case {p}')
+           
            fig.tight_layout()
+           
+           print(f' * made error plot for test case {p}')
+    
+       
+       fig, ax = plt.subplots(2, 1)
+       ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
+       ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
+       ax[0].set_xlabel('actual values')
+       ax[0].set_ylabel('predicted values)')    
+       
+       ax[1].hist(error.cpu().detach().numpy().ravel())
+       ax[1].set_title(f'error')
+       fig.set_dpi(200)
+       fig.tight_layout()
+       
+       
           
        return None
         
+   
+    
    
     def assess_fit(self):
         
@@ -390,8 +405,22 @@ class NeuralNetworkTimeSeries():
         return f_normalize, f_unnormalize, (Xmin, Xmax)
         
     
+    def predict(self, X):
+        if type(X) == np.ndarray:
+            X = torch.from_numpy(inputs).float().to(self.device)
+        
+        X = self.f_normalizeX(X)
+        X = self.autoencoderX.encoder(X)
+        X, _ = self.model(X)
+        X = self.autoencoderY.decoder(X)
+        X = self.f_unnormalizeY(X)
+        
+        return X     
     
 
+    def wrapup(self):
+        
+        print_header('done')
 
 
 
@@ -467,59 +496,46 @@ class AutoEncoder(nn.Module):
 
 #%%
 
+
+if __name__ == '__main__':
+
+    # dataset
+    N_inputs = 3
+    N_outputs = 5
+    N_loadcases = 20
     
-# dataset
-N_inputs = 3
-N_outputs = 5
-N_loadcases = 20
-
-#autoencoder
-N_epochs_autoencoderX = 500
-trial_dims_autoencoderX = range(1, N_inputs+1)
-N_layers_autoencoderX = 1
-
-N_epochs_autoencoderY = 500
-trial_dims_autoencoderY = range(1, N_outputs+1)
-N_layers_autoencoderY = 1
-
-N_dim_X_autoencoder = 3
-N_dim_Y_autoencoder = 5
-
-# RNN
-N_epochs_RNN = 100
-N_layers_RNN = 1
-N_hidden_dim_RNN = 100
-jaggedness_penalty_RNN = 0#1e-3
-
-
-
-G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
-
-NNTS = NeuralNetworkTimeSeries()
-NNTS.load_data(inputs, outputs)
-
-NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
-NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
-
-NNTS.reduce_dimensionality('X', N_dim_X_autoencoder)
-NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
-
-NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
-
-NNTS.assess_fit()
-
-
-print_header('done')
-
-
-#print(NNTS)
-
-
-#%%
-
-
-
-#%%
-
-
-
+    #autoencoder
+    N_epochs_autoencoderX = 500
+    trial_dims_autoencoderX = range(1, N_inputs+1)
+    N_layers_autoencoderX = 1
+    
+    N_epochs_autoencoderY = 500
+    trial_dims_autoencoderY = range(1, N_outputs+1)
+    N_layers_autoencoderY = 1
+    
+    N_dim_X_autoencoder = 3
+    N_dim_Y_autoencoder = 4
+    
+    # RNN
+    N_epochs_RNN = 1000
+    N_layers_RNN = 1
+    N_hidden_dim_RNN = 100
+    jaggedness_penalty_RNN = 0#1e-3
+    
+    
+    
+    G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
+    
+    NNTS = NeuralNetworkTimeSeries()
+    NNTS.load_data(inputs, outputs)
+    
+    NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
+    NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
+    
+    NNTS.reduce_dimensionality('X', N_dim_X_autoencoder)
+    NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
+    
+    NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
+    NNTS.assess_fit()
+    
+    NNTS.wrapup()
