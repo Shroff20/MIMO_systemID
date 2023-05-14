@@ -141,36 +141,47 @@ class NeuralNetworkTimeSeries():
         X = torch.from_numpy(inputs).float().to(device)
         Y = torch.from_numpy(outputs).float().to(device)
         
-        X, X_normalization = NeuralNetworkTimeSeries._normalize(X)
-        Y, Y_normalization = NeuralNetworkTimeSeries._normalize(Y)
         
-        X_train, X_test = NeuralNetworkTimeSeries._train_test_split(X, test_frac = .3)
-        Y_train, Y_test = NeuralNetworkTimeSeries._train_test_split(Y, test_frac = .3)
+        f_normalizeX, f_unnormalizeX, norm_limsX =  NeuralNetworkTimeSeries._create_normalization(X)
+        f_normalizeY, f_unnormalizeY, norm_limsY =  NeuralNetworkTimeSeries._create_normalization(Y)
 
+        X_train_raw, X_test_raw = NeuralNetworkTimeSeries._train_test_split(X, test_frac = .3)
+        Y_train_raw, Y_test_raw = NeuralNetworkTimeSeries._train_test_split(Y, test_frac = .3)
+
+        
+
+        
+        X_train = f_normalizeX(X_train_raw)
+        X_test = f_normalizeX(X_test_raw)
+        Y_train = f_normalizeY(Y_train_raw)
+        Y_test = f_normalizeY(Y_test_raw)
+        
+        
+        
+        self.X_train_raw = X_train_raw
+        self.X_test_raw = X_test_raw
+        self.Y_train_raw = Y_train_raw
+        self.Y_test_raw = Y_test_raw       
         
         self.X_train = X_train
         self.X_test = X_test
         self.Y_train = Y_train
         self.Y_test = Y_test
         
-        
-        self.X_normalization = X_normalization
-        self.Y_normalization = Y_normalization        
-        
+        self.f_normalizeX = f_normalizeX
+        self.f_normalizeY = f_normalizeY        
+        self.f_unnormalizeX = f_unnormalizeX
+        self.f_unnormalizeY = f_unnormalizeY       
+        self.norm_limsX = norm_limsX           
+        self.norm_limsY = norm_limsY            
         
         print(f' * loaded inputs: {inputs.shape}')
         print(f' * loaded outputs: {outputs.shape}')
         
     
-    def _normalize(X):
-        
-        data_min = X.min()
-        data_max = X.max()
-        
-        X = (2*(X-data_min)/(data_max-data_min))-1
-        
-        return X, (float(data_min), float(data_max))
-
+   
+    
+    
 
     def __str__(self):
         
@@ -283,7 +294,7 @@ class NeuralNetworkTimeSeries():
         
     def train(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, jaggedness_penalty = 0):
         
-        print_header(f'train RNN')
+        print_header('train RNN')
         
         N_inputs = self.X_train_encoded.shape[-1]
         N_outputs =  self.Y_train_encoded.shape[-1]
@@ -323,7 +334,64 @@ class NeuralNetworkTimeSeries():
     
         self.model = model
         
+    def predict(self, X):
+        pass 
+    
+    
+    
+    def _error_plot(U, Y_actual, Y_predicted):
         
+       error = Y_actual-Y_predicted
+        
+       
+       
+        
+       for p in range(np.min([5, error.shape[0]])):
+           fig, ax = plt.subplots(3, 1)
+           fig.set_dpi(200)
+           ax[0].plot(U[p, :, :].cpu().detach().numpy())
+           ax[0].set_title(f'inputs ({U.shape[-1]})')
+           
+           ax[1].plot(Y_actual[p, :, :].cpu().detach().numpy())
+           ax[1].plot(Y_predicted[p, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
+           ax[1].set_title(f'outputs ({Y_predicted.shape[-1]})')
+
+           ax[2].plot(error[p, :, :].cpu().detach().numpy())
+           ax[2].set_title(f'error ({error.shape[-1]})')
+           
+           fig.tight_layout()
+          
+       return None
+        
+   
+    def assess_fit(self):
+        
+            print_header('assess fit on training data')
+        
+            X_test = self.X_test
+            Y_test = self.Y_test
+    
+            X_test_encoded = self.autoencoderX.encoder(X_test)
+            Y_pred_encoded, _ = self.model(X_test_encoded)
+    
+            Y_pred = self.autoencoderY.decoder(Y_pred_encoded)
+    
+            NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred)
+
+        
+    def _create_normalization(X):
+                
+        Xmax = X.amax(dim = (0, 1), keepdim = True)
+        Xmin = X.amin(dim = (0, 1), keepdim = True)
+        
+        f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
+        f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
+    
+        return f_normalize, f_unnormalize, (Xmin, Xmax)
+        
+    
+    
+
 
 
 
@@ -418,11 +486,10 @@ N_dim_X_autoencoder = 3
 N_dim_Y_autoencoder = 5
 
 # RNN
-N_epochs_RNN = 1000
+N_epochs_RNN = 100
 N_layers_RNN = 1
 N_hidden_dim_RNN = 100
 jaggedness_penalty_RNN = 0#1e-3
-
 
 
 
@@ -439,64 +506,20 @@ NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
 
 NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
 
+NNTS.assess_fit()
+
+
 print_header('done')
 
 
 #print(NNTS)
 
 
-
-def error_plot(U, Y_actual, Y_predicted):
-    
-   error = Y_actual-Y_predicted
-    
-   for p in range(np.min([5, error.shape[0]])):
-       fig, ax = plt.subplots(3, 1)
-       fig.set_dpi(200)
-       ax[0].plot(U[p, :, :].cpu().detach().numpy())
-       ax[0].set_title(f'inputs ({NNTS.X_test.shape[2]})')
-       
-       ax[1].plot(Y_actual[p, :, :].cpu().detach().numpy())
-       ax[1].plot(Y_predicted[p, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
-       ax[1].set_title(f'outputs ({Y_predict_encoded.shape[2]})')
-
-       ax[2].plot(error[p, :, :].cpu().detach().numpy())
-       ax[2].set_title(f'error ({Y_predict_encoded.shape[2]})')
-       
-       fig.tight_layout()
-      
-   return None
+#%%
 
 
 
 #%%
 
-X_test = NNTS.X_test
-Y_test = NNTS.Y_test
 
-
-X_test_encoded = NNTS.autoencoderX.encoder(X_test)
-Y_pred_encoded, _ = NNTS.model(X_test_encoded)
-
-Y_pred = NNTS.autoencoderY.decoder(Y_pred_encoded)
-error = Y_pred - Y_test
-
-error_plot(X_test, Y_test, Y_pred)
-
-
-
-#%%
-
-# Test GRU
-
-X_test_encoded = NNTS.X_test_encoded
-Y_predict_encoded, _ = NNTS.model(X_test_encoded)
-Y_test_encoded = NNTS.Y_test_encoded
-error = Y_predict_encoded - Y_test_encoded
-
-
-error_plot(X_test_encoded, Y_test_encoded, Y_predict_encoded)
-
-
-#%%
 
