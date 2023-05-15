@@ -211,9 +211,9 @@ class NeuralNetworkTimeSeries():
     
 
 
-    def _train_autoencoder(device, inputs, compressed_dim, N_epochs, N_layers_autoencoder, learn_rate = .01, verbose = True):
+    def _train_autoencoder(device, input_train, input_test, compressed_dim, N_epochs, N_layers_autoencoder, learn_rate = .01, verbose = True):
         
-        N_features = inputs.shape[-1]       
+        N_features = input_train.shape[-1]       
         model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim, n_layers = N_layers_autoencoder)
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
@@ -222,32 +222,36 @@ class NeuralNetworkTimeSeries():
         #     inputs = torch.reshape(inputs, (-1, 1, inputs.shape[2]))
         
         model.to(device)
-        inputs = inputs.to(device)
-        model.train()
-        loss_vec = np.empty(N_epochs)
+        input_train = input_train.to(device)
+        input_test = input_test.to(device)
         
+        model.train()      
         
         t0 = time.perf_counter()
         
         for epoch in range(N_epochs):
             optimizer.zero_grad()
-            out = model(inputs)
-            loss = criterion(out, inputs) 
-            loss.backward(retain_graph=True)
-            optimizer.step()  
-            loss_val = loss.item()
-            loss_vec[epoch] = loss_val
             
+            out_train = model(input_train)
+            loss_train = criterion(out_train, input_train) 
+            loss_train.backward(retain_graph=True)
+            loss_train_val = loss_train.item()
+            optimizer.step()  
+            
+            out_test = model(input_test)
+            loss_test = criterion(out_test, input_test)          
+            loss_test_val = loss_test.item()
+            
+            model.losses_train.append(float(loss_train_val))
+            model.losses_test.append(float(loss_test_val))
+                        
             t1 = time.perf_counter()
             dt = t1-t0
-        
-            
+
             if (dt>=1.0 and verbose) or (epoch == 0) or (epoch == N_epochs-1):
-                print(f'      * epoch {epoch: >6}: train loss = {loss_val : .4e}, test loss = {loss_val : .4e}')
+                print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
                 t0 = t1
-            
-        model.losses = loss_vec
-        
+                    
         return model
 
 
@@ -258,9 +262,11 @@ class NeuralNetworkTimeSeries():
         device = self.device
         
         if X_or_Y == 'X':
-            inputs = self.X_train
+            input_train = self.X_train
+            input_test = self.X_test
         elif X_or_Y == 'Y':
-            inputs = self.Y_train    
+            input_train = self.Y_train
+            input_test = self.Y_test 
         else:
             raise(Exception('must be X or Y'))
         
@@ -268,7 +274,7 @@ class NeuralNetworkTimeSeries():
             
             print(f' * training autoencoder with {compressed_dim} compressed dimensions and {N_layers_autoencoder} layers for {N_epochs} epochs')
 
-            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(device, inputs, compressed_dim, N_epochs, N_layers_autoencoder)           
+            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(device, input_train, input_test, compressed_dim, N_epochs, N_layers_autoencoder)           
             #print(f' * {compressed_dim} dimensions: loss = {autoencoder_model.losses[-1]:.4e}')
 
             if X_or_Y == 'X':
@@ -277,8 +283,14 @@ class NeuralNetworkTimeSeries():
                 self.autoencodersY[compressed_dim]  = autoencoder_model
             else:
                 raise(Exception('must be X or Y'))
-            
-                    
+        
+        if X_or_Y == 'X':
+            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersX, 'X')
+        elif X_or_Y == 'Y':
+            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersY, 'Y')
+        else:
+            raise(Exception('must be X or Y'))    
+        
 
     def reduce_dimensionality(self, X_or_Y, N):
         
@@ -342,8 +354,8 @@ class NeuralNetworkTimeSeries():
             loss_test = criterion(out_test, self.Y_test_encoded) 
             loss_test_val = loss_test.item()
             
-            model.losses_train.append(loss_train_val)
-            model.losses_test.append(loss_test_val)
+            model.losses_train.append(float(loss_train_val))
+            model.losses_test.append(float(loss_test_val))
             
             t1 = time.perf_counter()
             dt = t1 -t0
@@ -353,11 +365,6 @@ class NeuralNetworkTimeSeries():
                 t0 = t1
         
         
-        Y_pred_encoded, _ = model(self.X_test_encoded)
-        test_loss = criterion(Y_pred_encoded, self.Y_test_encoded)  # need to add jagedness penalty
-        
-
-    
         model.plot_losses()
 
         self.model = model
@@ -450,7 +457,23 @@ class NeuralNetworkTimeSeries():
         
         print_header('done')
 
-
+    def _plot_autoencoder_sweep_loss(autoencoders, varname = ''):
+    
+        fig, ax = plt.subplots()
+        fig.set_dpi(200)
+        for key, data in autoencoders.items():
+            
+            h = ax.plot(autoencoders[key].losses_train, label = f'train, {key} dimensions')
+            ax.plot(autoencoders[key].losses_test, linestyle = '--', label = f'test, {key} dimensions', color = h[0].get_color())
+            
+            ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
+            ax.set_yscale('log')
+            ax.set_xlabel ('epoch')
+            ax.set_ylabel ('loss')
+            ax.set_title (f'{varname} autoencoder losses')    
+            ax.grid(c = [.9, .9, .9])
+            ax.set_axisbelow(True)
+    
 
 class GRUNet(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, n_layers, device, drop_prob=0.2):
@@ -486,12 +509,11 @@ class GRUNet(nn.Module):
         
         losses_train = self.losses_train
         losses_test = self.losses_test
-        
         fig, ax = plt.subplots()
-        
+        fig.set_dpi(200)       
         ax.plot(losses_train, label = 'train loss')
         ax.plot(losses_test, label = 'test loss')
-        ax.legend()
+        ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
         ax.set_xlabel('epoch')
         ax.set_ylabel('loss')
         ax.set_yscale('log')
@@ -525,7 +547,8 @@ class AutoEncoder(nn.Module):
         self.compressed_dim = compressed_dim
         self.fc_encode =   nn.Sequential(*encodelist)
         self.fc_decode =   nn.Sequential(*decodelist)    
-        self.losses = []
+        self.losses_train = []
+        self.losses_test = []
         self.max_error = None
         self.mean_error = None
         #print(self.layer_dims)
@@ -543,6 +566,22 @@ class AutoEncoder(nn.Module):
         x = self.decoder(x)
         return x
 
+
+    def plot_losses(self):
+        
+        losses_train = self.losses_train
+        losses_test = self.losses_test
+        fig, ax = plt.subplots()
+        fig.set_dpi(200)       
+        ax.plot(losses_train, label = 'train loss')
+        ax.plot(losses_test, label = 'test loss')
+        ax.legend()
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('loss')
+        ax.set_yscale('log')
+        ax.set_title('autoencoder model loss')
+
+        return None
 #%%
 
 
@@ -554,11 +593,11 @@ if __name__ == '__main__':
     N_loadcases = 20
     
     #autoencoder
-    N_epochs_autoencoderX = 50
+    N_epochs_autoencoderX = 500
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 50
+    N_epochs_autoencoderY = 500
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
@@ -566,7 +605,7 @@ if __name__ == '__main__':
     N_dim_Y_autoencoder = 5
     
     # RNN
-    N_epochs_RNN = 1000
+    N_epochs_RNN = 100
     N_layers_RNN = 1
     N_hidden_dim_RNN = 100
     
@@ -588,7 +627,10 @@ if __name__ == '__main__':
     
     NNTS.wrapup()
 
-#%%
+
+
+
+
 
 
 
