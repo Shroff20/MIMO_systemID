@@ -118,6 +118,10 @@ class NeuralNetworkTimeSeries():
         self.Y_test_encoded = None
         self.model = None
         self.working_dir = working_dir
+        self.folders = {}
+        
+        
+        self.make_directory_system()
         
         print_header('initialization')
         
@@ -131,6 +135,34 @@ class NeuralNetworkTimeSeries():
         self.device = device
         
         pass
+    
+    
+    def make_directory_system(self):
+        
+        dirs = {}
+        dirs['data_raw_dir'] = os.path.join(working_dir, 'data', 'raw_data')
+        dirs['data_encoded_dir'] = os.path.join(working_dir, 'data', 'encoded_data')
+        dirs['plots_losses_dir'] = os.path.join(working_dir, 'plots', 'losses')
+        dirs['plots_signals_dir'] = os.path.join(working_dir, 'plots', 'signal_predictions')
+
+        for path in dirs.values():
+            os.makedirs(path, exist_ok = True)
+        
+        self.folders = dirs
+        
+    def add_loadcase_data(self, name, inputs, outputs):
+        
+        if type(inputs) == np.ndarray:
+            inputs = torch.from_numpy(inputs).float()
+        if type(outputs) == np.ndarray:
+            outputs = torch.from_numpy(outputs).float()
+        
+        assert inputs.shape[0] == outputs.shape[0]
+
+        fn = os.path.join(self.folders['data_raw_dir'],  f'{name}.pkl')
+        torch.save((inputs, outputs), fn)\
+        
+        print(f' * added {name}: {inputs.shape[1]} inputs, {outputs.shape[1]} outputs, {inputs.shape[0]} timesteps')
     
     
     def load_data(self, inputs, outputs):
@@ -286,9 +318,9 @@ class NeuralNetworkTimeSeries():
                 raise(Exception('must be X or Y'))
         
         if X_or_Y == 'X':
-            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersX, 'X', output_folder = self.working_dir)
+            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersX, 'X', output_folder = self.folders['plots_losses_dir'])
         elif X_or_Y == 'Y':
-            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersY, 'Y', output_folder = self.working_dir)
+            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersY, 'Y', output_folder = self.folders['plots_losses_dir'])
         else:
             raise(Exception('must be X or Y'))    
         
@@ -366,7 +398,7 @@ class NeuralNetworkTimeSeries():
                 t0 = t1
         
         
-        model.plot_losses(self.working_dir)
+        model.plot_losses(self.folders['plots_losses_dir'])
 
         self.model = model
     
@@ -433,7 +465,7 @@ class NeuralNetworkTimeSeries():
     
             Y_pred = self.autoencoderY.decoder(Y_pred_encoded)
     
-            NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred, output_folder = self.working_dir)
+            NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred, output_folder = self.folders['plots_signals_dir'])
 
         
     def _create_normalization(X):
@@ -606,8 +638,7 @@ class AutoEncoder(nn.Module):
 if __name__ == '__main__':
 
     
-    working_dir = '.\output_folder'
-
+    working_dir = 'example_1\\'
 
     # dataset
     N_inputs = 3
@@ -635,7 +666,16 @@ if __name__ == '__main__':
     
     G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
     
+    
+    
+    
     NNTS = NeuralNetworkTimeSeries(working_dir = working_dir)
+    
+    
+    for i in range(inputs.shape[0]):
+        NNTS.add_loadcase_data(f'loadcase_{i}', inputs[i, :, :], outputs[i, :, :])
+    
+    
     NNTS.load_data(inputs, outputs)
     
     NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
@@ -653,6 +693,12 @@ if __name__ == '__main__':
 
 
 
+#%%
 
 
+output_folder = 'example_1\\data\\raw_data'
 
+
+G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
+
+    
