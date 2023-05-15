@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import torch 
 import scipy.signal as signal
 import torch.nn as nn
+import time
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
@@ -225,6 +226,9 @@ class NeuralNetworkTimeSeries():
         model.train()
         loss_vec = np.empty(N_epochs)
         
+        
+        t0 = time.perf_counter()
+        
         for epoch in range(N_epochs):
             optimizer.zero_grad()
             out = model(inputs)
@@ -233,8 +237,14 @@ class NeuralNetworkTimeSeries():
             optimizer.step()  
             loss_val = loss.item()
             loss_vec[epoch] = loss_val
-            if epoch%10 == 0 and verbose:
-                print(f' * epoch {epoch}: loss = {loss_val}')
+            
+            t1 = time.perf_counter()
+            dt = t1-t0
+        
+            
+            if (dt>=1.0 and verbose) or (epoch == 0) or (epoch == N_epochs-1):
+                print(f'      * epoch {epoch: >6}: train loss = {loss_val : .4e}, test loss = {loss_val : .4e}')
+                t0 = t1
             
         model.losses = loss_vec
         
@@ -254,11 +264,12 @@ class NeuralNetworkTimeSeries():
         else:
             raise(Exception('must be X or Y'))
         
-        print(f' * training {N_layers_autoencoder} layer autoencoder for {N_epochs} epochs')
-        
         for compressed_dim in N_trial_dims:
-            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(device, inputs, compressed_dim, N_epochs, N_layers_autoencoder, verbose = False)           
-            print(f' * {compressed_dim} dimensions: loss = {autoencoder_model.losses[-1]:.4e}')
+            
+            print(f' * training autoencoder with {compressed_dim} compressed dimensions and {N_layers_autoencoder} layers for {N_epochs} epochs')
+
+            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(device, inputs, compressed_dim, N_epochs, N_layers_autoencoder)           
+            #print(f' * {compressed_dim} dimensions: loss = {autoencoder_model.losses[-1]:.4e}')
 
             if X_or_Y == 'X':
                 self.autoencodersX[compressed_dim]  = autoencoder_model
@@ -308,6 +319,10 @@ class NeuralNetworkTimeSeries():
         optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
         model.train()
         
+        t0 = time.perf_counter()
+        
+        
+        
         
         for epoch in range(N_epochs):
             optimizer.zero_grad()
@@ -330,14 +345,17 @@ class NeuralNetworkTimeSeries():
             model.losses_train.append(loss_train_val)
             model.losses_test.append(loss_test_val)
             
-            if epoch%100 == 0 and verbose == True:
-                print(f' * epoch {epoch}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
+            t1 = time.perf_counter()
+            dt = t1 -t0
+            
+            if (dt >= 1 and verbose == True) or (epoch == N_epochs-1) or (epoch == 0):
+                print(f' * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
+                t0 = t1
         
         
         Y_pred_encoded, _ = model(self.X_test_encoded)
         test_loss = criterion(Y_pred_encoded, self.Y_test_encoded)  # need to add jagedness penalty
         
-        print(f' * test loss = {test_loss : .4e}')
 
     
         model.plot_losses()
@@ -536,11 +554,11 @@ if __name__ == '__main__':
     N_loadcases = 20
     
     #autoencoder
-    N_epochs_autoencoderX = 5000
+    N_epochs_autoencoderX = 50
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 5000
+    N_epochs_autoencoderY = 50
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
@@ -551,7 +569,6 @@ if __name__ == '__main__':
     N_epochs_RNN = 1000
     N_layers_RNN = 1
     N_hidden_dim_RNN = 100
-    jaggedness_penalty_RNN = 0#1e-3
     
     
     
@@ -572,7 +589,6 @@ if __name__ == '__main__':
     NNTS.wrapup()
 
 #%%
-
 
 
 
