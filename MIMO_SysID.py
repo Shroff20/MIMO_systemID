@@ -292,7 +292,7 @@ class NeuralNetworkTimeSeries():
             raise(Exception('must be X or Y'))
 
         
-    def train(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, jaggedness_penalty = 0):
+    def train(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = False):
         
         print_header('train RNN')
         
@@ -300,6 +300,9 @@ class NeuralNetworkTimeSeries():
         N_outputs =  self.Y_train_encoded.shape[-1]
                 
         model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers, device = self.device,)
+        
+
+        
         model.to(self.device)
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
@@ -308,22 +311,27 @@ class NeuralNetworkTimeSeries():
         
         for epoch in range(N_epochs):
             optimizer.zero_grad()
-            out, _ = model(self.X_train_encoded)
+            out_train, _ = model(self.X_train_encoded)
             
-            if jaggedness_penalty>0:
-                penalty =jaggedness_penalty* (out-self.Y_train_encoded).diff(axis = 1).abs().sum()
-            else:
-                penalty = 0
             
-            loss = criterion(out, self.Y_train_encoded) + penalty
-            loss.backward(retain_graph=True)
+            loss_train = criterion(out_train, self.Y_train_encoded) 
+            loss_train.backward(retain_graph=True)
+            
+            if gradiant_clip == True:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+            
             optimizer.step()  
-            loss_val = loss.item()
+            loss_train_val = loss_train.item()
             
-            model.losses.append(loss_val)
+            out_test, _ = model(self.X_test_encoded)
+            loss_test = criterion(out_test, self.Y_test_encoded) 
+            loss_test_val = loss_test.item()
+            
+            model.losses_train.append(loss_train_val)
+            model.losses_test.append(loss_test_val)
             
             if epoch%100 == 0 and verbose == True:
-                print(f' * epoch {epoch}: loss = {loss_val : .4e}, penalty = {100*penalty/loss_val :2f}%')
+                print(f' * epoch {epoch}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
         
         
         Y_pred_encoded, _ = model(self.X_test_encoded)
@@ -332,6 +340,8 @@ class NeuralNetworkTimeSeries():
         print(f' * test loss = {test_loss : .4e}')
 
     
+        model.plot_losses()
+
         self.model = model
     
     
@@ -432,7 +442,8 @@ class GRUNet(nn.Module):
         
         self.gru = nn.GRU(input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
         self.fc = nn.Linear(hidden_dim, output_dim)
-        self.losses = []
+        self.losses_train = []
+        self.losses_test = []
         self.max_error = None
         self.mean_error = None
         self.device = device
@@ -451,6 +462,26 @@ class GRUNet(nn.Module):
         weight = next(self.parameters()).data
         hidden = weight.new(self.n_layers, batch_size, self.hidden_dim).zero_().to(self.device)
         return hidden
+    
+    
+    def plot_losses(self):
+        
+        losses_train = self.losses_train
+        losses_test = self.losses_test
+        
+        fig, ax = plt.subplots()
+        
+        ax.plot(losses_train, label = 'train loss')
+        ax.plot(losses_test, label = 'test loss')
+        ax.legend()
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('loss')
+        ax.set_yscale('log')
+        ax.set_title('timeseries model loss')
+
+        return None
+    
+    
 
 class AutoEncoder(nn.Module):
     
@@ -505,16 +536,16 @@ if __name__ == '__main__':
     N_loadcases = 20
     
     #autoencoder
-    N_epochs_autoencoderX = 500
+    N_epochs_autoencoderX = 5000
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 500
+    N_epochs_autoencoderY = 5000
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
     N_dim_X_autoencoder = 3
-    N_dim_Y_autoencoder = 4
+    N_dim_Y_autoencoder = 5
     
     # RNN
     N_epochs_RNN = 1000
@@ -539,3 +570,9 @@ if __name__ == '__main__':
     NNTS.assess_fit()
     
     NNTS.wrapup()
+
+#%%
+
+
+
+
