@@ -11,6 +11,7 @@ import torch
 import scipy.signal as signal
 import torch.nn as nn
 import time
+import pandas as pd
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
@@ -119,7 +120,8 @@ class NeuralNetworkTimeSeries():
         self.model = None
         self.working_dir = working_dir
         self.folders = {}
-        
+        self.normalization_data = None
+        self.df_loadcases = pd.DataFrame(columns = ['name', 'fn_raw_data', 'fn_encoded_data'])
         
         self.make_directory_system()
         
@@ -158,11 +160,64 @@ class NeuralNetworkTimeSeries():
             outputs = torch.from_numpy(outputs).float()
         
         assert inputs.shape[0] == outputs.shape[0]
-
+        
+        def _get_min_max(x):
+            
+            min_vals, _ = torch.min(x, axis = 0)
+            max_vals, _ = torch.max(x, axis = 0)
+            
+            return min_vals.cpu().detach().numpy(), max_vals.cpu().detach().numpy()
+            
+        input_min_vals, input_max_vals = _get_min_max(inputs)
+        output_min_vals, output_max_vals = _get_min_max(outputs)
+        
         fn = os.path.join(self.folders['data_raw_dir'],  f'{name}.pkl')
-        torch.save((inputs, outputs), fn)\
+        torch.save((inputs, outputs), fn)
+        
+        # update the maxes and mins seen over all loadcases
+        if self.normalization_data == None:
+            self.normalization_data = {}
+            self.normalization_data['input_min_vals'] = input_min_vals
+            self.normalization_data['input_max_vals'] = input_max_vals
+            self.normalization_data['output_min_vals'] = output_min_vals
+            self.normalization_data['output_max_vals'] = output_max_vals
+        else:
+            self.normalization_data['input_min_vals']  = np.min([self.normalization_data['input_min_vals'], input_min_vals], axis = 0)
+            self.normalization_data['input_max_vals']  = np.max([self.normalization_data['input_max_vals'], input_max_vals], axis = 0)
+            self.normalization_data['output_min_vals'] = np.min([self.normalization_data['output_min_vals'], output_min_vals], axis = 0)
+            self.normalization_data['output_max_vals'] = np.max([self.normalization_data['output_max_vals'], output_max_vals], axis = 0)        
+        
+        data = {}
+        data['name'] = name
+        data['fn_raw_data'] = fn
+        
+        self.df_loadcases.loc[name, :] = data
         
         print(f' * added {name}: {inputs.shape[1]} inputs, {outputs.shape[1]} outputs, {inputs.shape[0]} timesteps')
+    
+        
+    def generate_normalization_functions(self):
+        
+        print_header('normalization functions')
+        
+        #dict_keys(['input_min_vals', 'input_max_vals', 'output_min_vals', 'output_max_vals'])
+        
+        
+        def neg1_to1_norm(Xmin, Xmax):        
+            f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
+            f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
+            return f_normalize, f_unnormalize
+        
+        f_normalizeX, f_unnormalizeX = neg1_to1_norm(self.normalization_data['input_min_vals'], self.normalization_data['input_max_vals'])
+        f_normalizeY, f_unnormalizeY = neg1_to1_norm(self.normalization_data['output_min_vals'], self.normalization_data['output_max_vals'])
+
+        self.f_normalizeX = f_normalizeX
+        self.f_normalizeY = f_normalizeY        
+        self.f_unnormalizeX = f_unnormalizeX
+        self.f_unnormalizeY = f_unnormalizeY    
+        
+        print(' * done generating normalization functions')
+        
     
     
     def load_data(self, inputs, outputs):
@@ -202,12 +257,12 @@ class NeuralNetworkTimeSeries():
         self.Y_train = Y_train
         self.Y_test = Y_test
         
-        self.f_normalizeX = f_normalizeX
-        self.f_normalizeY = f_normalizeY        
-        self.f_unnormalizeX = f_unnormalizeX
-        self.f_unnormalizeY = f_unnormalizeY       
-        self.norm_limsX = norm_limsX           
-        self.norm_limsY = norm_limsY            
+        # self.f_normalizeX = f_normalizeX
+        # self.f_normalizeY = f_normalizeY        
+        # self.f_unnormalizeX = f_unnormalizeX
+        # self.f_unnormalizeY = f_unnormalizeY       
+        # self.norm_limsX = norm_limsX           
+        # self.norm_limsY = norm_limsY            
         
         print(f' * loaded inputs: {inputs.shape}')
         print(f' * loaded outputs: {outputs.shape}')
@@ -666,15 +721,15 @@ if __name__ == '__main__':
     
     G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
     
-    
-    
-    
+
     NNTS = NeuralNetworkTimeSeries(working_dir = working_dir)
     
     
     for i in range(inputs.shape[0]):
         NNTS.add_loadcase_data(f'loadcase_{i}', inputs[i, :, :], outputs[i, :, :])
     
+    
+    NNTS.generate_normalization_functions()
     
     NNTS.load_data(inputs, outputs)
     
@@ -692,13 +747,3 @@ if __name__ == '__main__':
 
 
 
-
-#%%
-
-
-output_folder = 'example_1\\data\\raw_data'
-
-
-G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
-
-    
