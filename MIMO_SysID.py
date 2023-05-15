@@ -100,7 +100,7 @@ class FakeDataMaker():
 
 class NeuralNetworkTimeSeries():
     
-    def __init__(self):
+    def __init__(self, working_dir):
         self.device = None
         self.X_train = None
         self.X_test= None
@@ -117,6 +117,7 @@ class NeuralNetworkTimeSeries():
         self.Y_train_encoded = None
         self.Y_test_encoded = None
         self.model = None
+        self.working_dir = working_dir
         
         print_header('initialization')
         
@@ -285,9 +286,9 @@ class NeuralNetworkTimeSeries():
                 raise(Exception('must be X or Y'))
         
         if X_or_Y == 'X':
-            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersX, 'X')
+            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersX, 'X', output_folder = self.working_dir)
         elif X_or_Y == 'Y':
-            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersY, 'Y')
+            NeuralNetworkTimeSeries._plot_autoencoder_sweep_loss(self.autoencodersY, 'Y', output_folder = self.working_dir)
         else:
             raise(Exception('must be X or Y'))    
         
@@ -365,13 +366,13 @@ class NeuralNetworkTimeSeries():
                 t0 = t1
         
         
-        model.plot_losses()
+        model.plot_losses(self.working_dir)
 
         self.model = model
     
     
     
-    def _error_plot(U, Y_actual, Y_predicted):
+    def _error_plot(U, Y_actual, Y_predicted, output_folder = '.'):
         
        error = Y_actual-Y_predicted
         
@@ -393,7 +394,10 @@ class NeuralNetworkTimeSeries():
            
            fig.tight_layout()
            
-           print(f' * made error plot for test case {p}')
+           fn = os.path.join(output_folder, f'signal_plot_test_{p}.pdf')
+           fig.savefig(fn)
+           
+           print(f' * saved {fn}')
     
        
        fig, ax = plt.subplots(2, 1)
@@ -401,9 +405,12 @@ class NeuralNetworkTimeSeries():
        ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
        ax[0].set_xlabel('actual values')
        ax[0].set_ylabel('predicted values)')    
-       
+       ax[0].grid(c = [.9, .9, .9])
+       ax[0].set_axisbelow(True)
        ax[1].hist(error.cpu().detach().numpy().ravel())
        ax[1].set_title(f'error')
+       ax[1].grid(c = [.9, .9, .9])
+       ax[1].set_axisbelow(True)
        fig.set_dpi(200)
        fig.tight_layout()
        
@@ -426,7 +433,7 @@ class NeuralNetworkTimeSeries():
     
             Y_pred = self.autoencoderY.decoder(Y_pred_encoded)
     
-            NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred)
+            NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred, output_folder = self.working_dir)
 
         
     def _create_normalization(X):
@@ -457,7 +464,7 @@ class NeuralNetworkTimeSeries():
         
         print_header('done')
 
-    def _plot_autoencoder_sweep_loss(autoencoders, varname = ''):
+    def _plot_autoencoder_sweep_loss(autoencoders, varname = '', output_folder = '.'):
     
         fig, ax = plt.subplots()
         fig.set_dpi(200)
@@ -473,8 +480,13 @@ class NeuralNetworkTimeSeries():
             ax.set_title (f'{varname} autoencoder losses')    
             ax.grid(c = [.9, .9, .9])
             ax.set_axisbelow(True)
+        
+        fig.tight_layout()
+        fn = os.path.join(output_folder, f'losses_autoencoder_{varname}.pdf')
+        fig.savefig(fn)
+        print(f' * saved {fn}')
     
-
+    
 class GRUNet(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, n_layers, device, drop_prob=0.2):
         super(GRUNet, self).__init__()
@@ -505,7 +517,7 @@ class GRUNet(nn.Module):
         return hidden
     
     
-    def plot_losses(self):
+    def plot_losses(self, output_folder = '.'):
         
         losses_train = self.losses_train
         losses_test = self.losses_test
@@ -518,6 +530,12 @@ class GRUNet(nn.Module):
         ax.set_ylabel('loss')
         ax.set_yscale('log')
         ax.set_title('timeseries model loss')
+        ax.grid(c = [.9, .9, .9])
+        ax.set_axisbelow(True)
+        fig.tight_layout()
+        fn = os.path.join(output_folder, 'losses_timeseries_model.pdf')
+        fig.savefig(fn)
+        print(' * saved {fn}')
 
         return None
     
@@ -587,17 +605,21 @@ class AutoEncoder(nn.Module):
 
 if __name__ == '__main__':
 
+    
+    working_dir = '.\output_folder'
+
+
     # dataset
     N_inputs = 3
     N_outputs = 5
     N_loadcases = 20
     
     #autoencoder
-    N_epochs_autoencoderX = 500
+    N_epochs_autoencoderX = 50
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 500
+    N_epochs_autoencoderY = 50
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
@@ -613,7 +635,7 @@ if __name__ == '__main__':
     
     G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
     
-    NNTS = NeuralNetworkTimeSeries()
+    NNTS = NeuralNetworkTimeSeries(working_dir = working_dir)
     NNTS.load_data(inputs, outputs)
     
     NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
