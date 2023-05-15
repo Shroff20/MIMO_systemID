@@ -122,7 +122,7 @@ class NeuralNetworkTimeSeries():
         self.folders = {}
         self.normalization_data = None
         self.df_loadcases = pd.DataFrame(columns = ['name', 'fn_raw_data', 'fn_encoded_data'])
-        
+        self.train_test_indicies = None
         self.make_directory_system()
         
         print_header('initialization')
@@ -546,6 +546,36 @@ class NeuralNetworkTimeSeries():
         
         return X     
     
+    
+    def  train_test_split(self, test_frac, batch_size):
+        
+         N_loadcases = len(self.df_loadcases)
+        
+         train_test_indicies  = NeuralNetworkTimeSeries._train_test_split_with_batches(batch_size, test_frac, N_loadcases)
+         
+         self.train_test_indicies = train_test_indicies
+         
+    
+    def _train_test_split_with_batches(batch_size, test_frac, N_loadcases):
+
+        N_test = np.ceil(N_loadcases*test_frac).astype(int)
+        idx = list(range(N_loadcases))
+        idx_test = idx[:N_test]
+        idx_train = idx[N_test:]
+        idx_test_batches = [idx_test[x:x+batch_size] for x in range(0, len(idx_test), batch_size)]
+        idx_train_batches = [idx_train[x:x+batch_size] for x in range(0, len(idx_train), batch_size)]
+        
+        batches = {}
+        batches['train'] = idx_train_batches
+        batches['test'] = idx_test_batches
+
+        print(batches)
+        
+        print(f' * train ({100-100*test_frac:.0f}%): {len(idx_train)} loadcases, {len(idx_train_batches)} batches, up to {batch_size} loadcases/batch')
+        print(f' * test ({100*test_frac:.0f}%): {len(idx_test)} loadcases, {len(idx_test_batches)} batches, up to {batch_size} loadcases/batch')
+
+        return batches
+    
 
     def wrapup(self):
         
@@ -700,6 +730,9 @@ if __name__ == '__main__':
     N_outputs = 5
     N_loadcases = 20
     
+    batch_size = 3
+    test_frac = .3
+    
     #autoencoder
     N_epochs_autoencoderX = 50
     trial_dims_autoencoderX = range(1, N_inputs+1)
@@ -731,6 +764,8 @@ if __name__ == '__main__':
     
     NNTS.generate_normalization_functions()
     
+    NNTS.train_test_split(test_frac, batch_size)
+    
     NNTS.load_data(inputs, outputs)
     
     NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
@@ -744,6 +779,5 @@ if __name__ == '__main__':
     
     NNTS.wrapup()
 
-
-
+#%%
 
