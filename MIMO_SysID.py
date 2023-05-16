@@ -613,11 +613,11 @@ class NeuralNetworkTimeSeries():
             
             epoch = [x[0] for x in autoencoders[key].losses_test]
             loss = [x[1] for x in autoencoders[key].losses_test]
-            h = ax.plot(epoch, loss, label = f'train, {key} dimensions')
+            h = ax.plot(epoch, loss, label = f'test, {key} dimensions')
             
             epoch = [x[0] for x in autoencoders[key].losses_train]
             loss = [x[1] for x in autoencoders[key].losses_train]
-            ax.plot(epoch, loss, linestyle = '--', label = f'test, {key} dimensions', color = h[0].get_color())
+            ax.plot(epoch, loss, linestyle = '--', label = f'train, {key} dimensions', color = h[0].get_color())
             
             ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
             ax.set_yscale('log')
@@ -757,6 +757,8 @@ class AutoEncoder(nn.Module):
 if __name__ == '__main__':
 
     
+    # INPUTS
+
     working_dir = 'example_1\\'
 
     # dataset
@@ -772,7 +774,7 @@ if __name__ == '__main__':
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 500
+    N_epochs_autoencoderY = 1000
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
@@ -785,10 +787,10 @@ if __name__ == '__main__':
     N_hidden_dim_RNN = 100
     
     
+    # PIPELINE
     
     G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
     
-
     NNTS = NeuralNetworkTimeSeries(working_dir = working_dir)
     
     for i in range(inputs.shape[0]):
@@ -801,15 +803,9 @@ if __name__ == '__main__':
     NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
     
     NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder)
-    
     NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
     NNTS.assess_fit()
-    
     NNTS.wrapup()
-
-#%%
-
-#print(NNTS)
 
 
 
