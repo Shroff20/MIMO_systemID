@@ -40,23 +40,24 @@ if __name__ == '__main__':
     
     #%% PIPELINE
     
-    G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases)
+    G, inputs, outputs, t = FakeDataMaker.generate_fake_data(N_inputs, N_outputs, N_loadcases) # generate fake data
     
-    NNTS = NeuralNetworkTimeSeries(working_dir = working_dir)
+    NNTS = NeuralNetworkTimeSeries(working_dir = working_dir) # initialize model
     
+    # add loadcases one at a time.  Data must me uniformly spaced in time with the same time increment over all loadcases.  
     for i in range(inputs.shape[0]):
-        NNTS.add_loadcase_data(f'loadcase_{i}', inputs[i, :, :], outputs[i, :, :])
+        NNTS.add_loadcase_data(f'loadcase_{i}', inputs[i, :, :], outputs[i, :, :]) # loadcase name, [N_timesteps, N_inputs],   [N_timesteps, N_outputs]
     
-    NNTS.generate_normalization_functions()
-    NNTS.train_test_split(test_frac, batch_size)
+    NNTS.generate_normalization_functions() # generates -1 to 1 normalization for all inputs and outputs based on the loadcases added
+    NNTS.train_test_split(test_frac, batch_size) # splits into train and text batches
     
-    NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
-    NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
+    NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)  # trains autoencoders for the input of various dimensionality for review
+    NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY) # trains autoencoders for the output of various dimensionality for review
     
-    NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder)
-    NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
-    NNTS.assess_fit()
-    NNTS.wrapup()
+    NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder) # normalizes data and compresses input and output based on chosen dimensionality
+    NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN) # trains timeseries model
+    NNTS.assess_fit() # assses fit of the final model
+    NNTS.wrapup() # wrap up study
 
 
 
