@@ -320,21 +320,15 @@ class NeuralNetworkTimeSeries():
         if X_or_Y == 'X':
             f_normalizeX = self.f_normalizeX
             f_load = lambda indicies: f_normalizeX(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['X'])
-
         elif X_or_Y == 'Y':
             f_normalizeY = self.f_normalizeY
-            
-            
             f_load = lambda indicies: f_normalizeY(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['Y'])
         else:
             raise(Exception('must be X or Y'))
         
         for compressed_dim in N_trial_dims:
-            
             print(f' * training autoencoder with {compressed_dim} compressed dimensions and {N_layers_autoencoder} layers for {N_epochs} epochs')
-
             autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(self.device,  self.train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases)           
-            #print(f' * {compressed_dim} dimensions: loss = {autoencoder_model.losses[-1]:.4e}')
 
             if X_or_Y == 'X':
                 self.autoencodersX[compressed_dim]  = autoencoder_model
@@ -360,6 +354,9 @@ class NeuralNetworkTimeSeries():
     
         modelX = self.autoencodersX[Nx]
         modelY = self.autoencodersY[Ny]
+        self.autoencoderX = modelX
+        self.autoencoderY = modelY
+        
         f_normalizeX = self.f_normalizeX
         f_normalizeY = self.f_normalizeY
 
@@ -380,20 +377,26 @@ class NeuralNetworkTimeSeries():
             fn = os.path.join(self.folders['data_encoded_dir'],  f'{name}.pkl')
             torch.save((encoded_dataX, encoded_dataY), fn)
             
+            self.df_loadcases.loc[name, 'fn_encoded_data'] = fn
+            
             print(f' * saved {fn}')
         
         
         
-    def train(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = False):
+    def train_timeseries_model(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = False):
         
-        print_header('train RNN')
+        print_header('train timeseries model')
+
+        indicies = [0, ]
+        f_load = lambda indicies: NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_encoded_data', self.device)
+        data = f_load(indicies)
         
-        N_inputs = self.X_train_encoded.shape[-1]
-        N_outputs =  self.Y_train_encoded.shape[-1]
+        N_inputs = data['X'].shape[-1]
+        N_outputs =  data['Y'].shape[-1]
                 
         model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers, device = self.device,)
         
-
+        print(f' * initialized GRU model with {N_inputs} inputs, {N_outputs} outputs, {N_layers} layers, {N_hidden_dim} hidden dims')
         
         model.to(self.device)
         criterion = nn.MSELoss()
@@ -402,89 +405,114 @@ class NeuralNetworkTimeSeries():
         
         t0 = time.perf_counter()
         
+        train_test_indicies = self.train_test_indicies
+        N_times_through_batches = 5  # time
+        
+        N_batches = len(train_test_indicies['train'])
+        N_loadcases_per_batch = np.average([len(x) for x in train_test_indicies['train']])
+        N_loadcases = len(self.df_loadcases)               
+        epoch = 0
+        total_loadcases_trained_on = 0 
         
         
+        for j in range(N_times_through_batches):        
+            
+            for train_batch in train_test_indicies['train']:
+                data = f_load(train_batch)
+                input_train = data['X']
+                output_train = data['Y']
+                
+                n_lim = np.ceil(N_epochs * N_loadcases/(N_times_through_batches * N_batches * N_loadcases_per_batch)).astype(int)
+                
+                for n in range(n_lim):
+                    optimizer.zero_grad()
+                    out_train_predicted, _ = model(input_train)
+                    
+                    loss_train = criterion(out_train_predicted, output_train) 
+                    loss_train.backward(retain_graph=True)
+                    
+                    if gradiant_clip == True:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+                    
+                    optimizer.step()  
+                    loss_train_val = loss_train.item()
+                    
+                    total_loadcases_trained_on += input_train.shape[0]
+                    epoch = total_loadcases_trained_on/N_loadcases
+
+                    model.losses_train.append((float(epoch), float(loss_train_val)))
+
+                    t1 = time.perf_counter()
+                    dt = t1 -t0
+                    
+                    if (dt >= 1 and verbose == True) or (epoch == N_epochs-1) or (epoch == 0):
+                        print(f' * epoch {epoch: >6}: train loss = {loss_train_val : .4e}')
+                        t0 = t1
         
-        for epoch in range(N_epochs):
-            optimizer.zero_grad()
-            out_train, _ = model(self.X_train_encoded)
-            
-            
-            loss_train = criterion(out_train, self.Y_train_encoded) 
-            loss_train.backward(retain_graph=True)
-            
-            if gradiant_clip == True:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-            
-            optimizer.step()  
-            loss_train_val = loss_train.item()
-            
-            out_test, _ = model(self.X_test_encoded)
-            loss_test = criterion(out_test, self.Y_test_encoded) 
-            loss_test_val = loss_test.item()
-            
-            model.losses_train.append(float(loss_train_val))
-            model.losses_test.append(float(loss_test_val))
-            
-            t1 = time.perf_counter()
-            dt = t1 -t0
-            
-            if (dt >= 1 and verbose == True) or (epoch == N_epochs-1) or (epoch == 0):
-                print(f' * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
-                t0 = t1
-        
-        
+            test_losses_per_batch = []
+            for test_batch in train_test_indicies['test']:   
+                data = f_load(test_batch)
+                input_test = data['X']
+                output_test = data['Y']
+                out_test_predicted, _ = model(input_test)
+                loss_test = criterion(out_test_predicted, output_test)          
+                test_losses_per_batch.append(loss_test.item())
+            loss_test_val = np.average(test_losses_per_batch)
+            model.losses_test.append((float(epoch), float(loss_test_val)))
+            print(f' * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
+       
+    
         model.plot_losses(self.folders['plots_losses_dir'])
 
         self.model = model
     
     
     
-    def _error_plot(U, Y_actual, Y_predicted, output_folder = '.'):
+    def _error_plot(U, Y_actual, Y_predicted, name, output_folder = '.'):
         
-       error = Y_actual-Y_predicted
+        error = Y_actual-Y_predicted
         
-       
-       for p in range(np.min([5, error.shape[0]])):
-           fig, ax = plt.subplots(3, 1)
-           fig.set_dpi(200)
-           ax[0].plot(U[p, :, :].cpu().detach().numpy())
-           ax[0].set_title(f'inputs ({U.shape[-1]})')
-           
-           ax[1].plot(Y_actual[p, :, :].cpu().detach().numpy())
-           ax[1].plot(Y_predicted[p, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
-           ax[1].set_title(f'outputs ({Y_predicted.shape[-1]})')
-
-           ax[2].plot(error[p, :, :].cpu().detach().numpy())
-           ax[2].set_title(f'error ({error.shape[-1]})')
-           
-           fig.suptitle(f'test case {p}')
-           
-           fig.tight_layout()
-           
-           fn = os.path.join(output_folder, f'signal_plot_test_{p}.pdf')
-           fig.savefig(fn)
-           
-           print(f' * saved {fn}')
+        fig, ax = plt.subplots(3, 1)
+        fig.set_dpi(200)
+        ax[0].plot(U[0, :, :].cpu().detach().numpy())
+        ax[0].set_title(f'inputs ({U.shape[-1]})')
+        
+        ax[1].plot(Y_actual[0, :, :].cpu().detach().numpy())
+        ax[1].plot(Y_predicted[0, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
+        ax[1].set_title(f'outputs ({Y_predicted.shape[-1]})')
+        
+        ax[2].plot(error[0, :, :].cpu().detach().numpy())
+        ax[2].set_title(f'error ({error.shape[-1]})')
+        
+        for i in range(3):
+            ax[i].grid(c = [.9, .9, .9])
+            ax[i].set_axisbelow(True)
+        
+        fig.suptitle(f'test case: {name}')
+        
+        fig.tight_layout()
+        
+        fn = os.path.join(output_folder, f'signal_plot_test_{name}.pdf')
+        fig.savefig(fn)
+        
+        print(f' * saved {fn}')
     
        
-       fig, ax = plt.subplots(2, 1)
-       ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
-       ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
-       ax[0].set_xlabel('actual values')
-       ax[0].set_ylabel('predicted values)')    
-       ax[0].grid(c = [.9, .9, .9])
-       ax[0].set_axisbelow(True)
-       ax[1].hist(error.cpu().detach().numpy().ravel())
-       ax[1].set_title(f'error')
-       ax[1].grid(c = [.9, .9, .9])
-       ax[1].set_axisbelow(True)
-       fig.set_dpi(200)
-       fig.tight_layout()
-       
-       
-          
-       return None
+        # fig, ax = plt.subplots(2, 1)
+        # ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
+        # ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
+        # ax[0].set_xlabel('actual values')
+        # ax[0].set_ylabel('predicted values)')    
+        # ax[0].grid(c = [.9, .9, .9])
+        # ax[0].set_axisbelow(True)
+        # ax[1].hist(error.cpu().detach().numpy().ravel())
+        # ax[1].set_title(f'error')
+        # ax[1].grid(c = [.9, .9, .9])
+        # ax[1].set_axisbelow(True)
+        # fig.set_dpi(200)
+        # fig.tight_layout()
+      
+        return None
         
    
     def load_data_from_disk(df_loadcases, indicies, col, device):
@@ -511,19 +539,23 @@ class NeuralNetworkTimeSeries():
    
     def assess_fit(self):
         
-            print_header('assess fit on training data')
-        
-            X_test = self.X_test
-            Y_test = self.Y_test
+        print_header('assess fit on training data')
     
-            X_test_encoded = self.autoencoderX.encoder(X_test)
-            Y_pred_encoded, _ = self.model(X_test_encoded)
-    
-            Y_pred = self.autoencoderY.decoder(Y_pred_encoded)
-    
-            NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred, output_folder = self.folders['plots_signals_dir'])
+        test_indicies = np.concatenate(NNTS.train_test_indicies['test'])
 
-        
+        df_loadcases = self.df_loadcases
+
+        for idx in test_indicies:
+            f_load = lambda indicies: NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)
+            data = f_load([idx,])
+            X = data['X']
+            Y_actual = data['Y']
+            Y_pred = self.predict(X)
+            name = df_loadcases['name'].iloc[idx]
+            print(name)
+            NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
+
+    
     
     def predict(self, X):
         if type(X) == np.ndarray:
@@ -633,12 +665,17 @@ class GRUNet(nn.Module):
     
     def plot_losses(self, output_folder = '.'):
         
-        losses_train = self.losses_train
-        losses_test = self.losses_test
         fig, ax = plt.subplots()
-        fig.set_dpi(200)       
-        ax.plot(losses_train, label = 'train loss')
-        ax.plot(losses_test, label = 'test loss')
+        fig.set_dpi(200)   
+        
+        epoch = [x[0] for x in self.losses_train]
+        loss = [x[1] for x in self.losses_train]
+        ax.plot(epoch, loss, label = 'train loss')
+        
+        epoch = [x[0] for x in self.losses_test]
+        loss = [x[1] for x in self.losses_test]
+        ax.plot(epoch, loss, label = 'test loss')    
+        
         ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
         ax.set_xlabel('epoch')
         ax.set_ylabel('loss')
@@ -649,7 +686,7 @@ class GRUNet(nn.Module):
         fig.tight_layout()
         fn = os.path.join(output_folder, 'losses_timeseries_model.pdf')
         fig.savefig(fn)
-        print(' * saved {fn}')
+        print(f' * saved {fn}')
 
         return None
     
@@ -731,19 +768,19 @@ if __name__ == '__main__':
     test_frac = .3   # fraction of data to use for testing
     
     #autoencoder
-    N_epochs_autoencoderX = 50
+    N_epochs_autoencoderX = 500
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 50
+    N_epochs_autoencoderY = 500
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
-    N_dim_X_autoencoder = 2
-    N_dim_Y_autoencoder = 3
+    N_dim_X_autoencoder = N_inputs
+    N_dim_Y_autoencoder = N_outputs
     
     # RNN
-    N_epochs_RNN = 100
+    N_epochs_RNN = 1000
     N_layers_RNN = 1
     N_hidden_dim_RNN = 100
     
@@ -754,30 +791,21 @@ if __name__ == '__main__':
 
     NNTS = NeuralNetworkTimeSeries(working_dir = working_dir)
     
-    
     for i in range(inputs.shape[0]):
         NNTS.add_loadcase_data(f'loadcase_{i}', inputs[i, :, :], outputs[i, :, :])
     
-    
     NNTS.generate_normalization_functions()
-    
     NNTS.train_test_split(test_frac, batch_size)
-    
-         
-    
-    
-    # NNTS.load_data(inputs, outputs)
     
     NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
     NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
     
     NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder)
-    # NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
     
-    # NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
-    # NNTS.assess_fit()
+    NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
+    NNTS.assess_fit()
     
-    # NNTS.wrapup()
+    NNTS.wrapup()
 
 #%%
 
