@@ -103,10 +103,12 @@ class NeuralNetworkTimeSeries():
     
     def __init__(self, working_dir):
         self.device = None
-        self.X_train = None
-        self.X_test= None
-        self.Y_train = None
-        self.Y_test = None
+        # self.X_cur = None
+        # self.Y_cur = None
+        # self.X_train = None
+        # self.X_test= None
+        # self.Y_train = None
+        # self.Y_test = None
         self.X_normalization = None
         self.Y_normalization = None
         self.autoencodersX = {}
@@ -204,6 +206,15 @@ class NeuralNetworkTimeSeries():
         
         
         def neg1_to1_norm(Xmin, Xmax):        
+            
+            Xmin = Xmin.reshape(1, 1, -1)
+            Xmax = Xmax.reshape(1, 1, -1)
+            
+            if type(Xmin) == np.ndarray:
+                Xmin = torch.from_numpy(Xmin).float().to(self.device)
+            if type(Xmax) == np.ndarray:
+                Xmax = torch.from_numpy(Xmax).float().to(self.device)           
+            
             f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
             f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
             return f_normalize, f_unnormalize
@@ -220,52 +231,52 @@ class NeuralNetworkTimeSeries():
         
     
     
-    def load_data(self, inputs, outputs):
+    # def load_data(self, inputs, outputs):
         
         
-        print_header('load data')
+    #     print_header('load data')
         
-        device = self.device
+    #     device = self.device
         
-        X = torch.from_numpy(inputs).float().to(device)
-        Y = torch.from_numpy(outputs).float().to(device)
+    #     X = torch.from_numpy(inputs).float().to(device)
+    #     Y = torch.from_numpy(outputs).float().to(device)
         
         
-        f_normalizeX, f_unnormalizeX, norm_limsX =  NeuralNetworkTimeSeries._create_normalization(X)
-        f_normalizeY, f_unnormalizeY, norm_limsY =  NeuralNetworkTimeSeries._create_normalization(Y)
+    #     f_normalizeX, f_unnormalizeX, norm_limsX =  NeuralNetworkTimeSeries._create_normalization(X)
+    #     f_normalizeY, f_unnormalizeY, norm_limsY =  NeuralNetworkTimeSeries._create_normalization(Y)
 
-        X_train_raw, X_test_raw = NeuralNetworkTimeSeries._train_test_split(X, test_frac = .3)
-        Y_train_raw, Y_test_raw = NeuralNetworkTimeSeries._train_test_split(Y, test_frac = .3)
-
-        
+    #     X_train_raw, X_test_raw = NeuralNetworkTimeSeries._train_test_split(X, test_frac = .3)
+    #     Y_train_raw, Y_test_raw = NeuralNetworkTimeSeries._train_test_split(Y, test_frac = .3)
 
         
-        X_train = f_normalizeX(X_train_raw)
-        X_test = f_normalizeX(X_test_raw)
-        Y_train = f_normalizeY(Y_train_raw)
-        Y_test = f_normalizeY(Y_test_raw)
+
+        
+    #     X_train = f_normalizeX(X_train_raw)
+    #     X_test = f_normalizeX(X_test_raw)
+    #     Y_train = f_normalizeY(Y_train_raw)
+    #     Y_test = f_normalizeY(Y_test_raw)
         
         
         
-        self.X_train_raw = X_train_raw
-        self.X_test_raw = X_test_raw
-        self.Y_train_raw = Y_train_raw
-        self.Y_test_raw = Y_test_raw       
+    #     self.X_train_raw = X_train_raw
+    #     self.X_test_raw = X_test_raw
+    #     self.Y_train_raw = Y_train_raw
+    #     self.Y_test_raw = Y_test_raw       
         
-        self.X_train = X_train
-        self.X_test = X_test
-        self.Y_train = Y_train
-        self.Y_test = Y_test
+    #     self.X_train = X_train
+    #     self.X_test = X_test
+    #     self.Y_train = Y_train
+    #     self.Y_test = Y_test
         
-        # self.f_normalizeX = f_normalizeX
-        # self.f_normalizeY = f_normalizeY        
-        # self.f_unnormalizeX = f_unnormalizeX
-        # self.f_unnormalizeY = f_unnormalizeY       
-        # self.norm_limsX = norm_limsX           
-        # self.norm_limsY = norm_limsY            
+    #     # self.f_normalizeX = f_normalizeX
+    #     # self.f_normalizeY = f_normalizeY        
+    #     # self.f_unnormalizeX = f_unnormalizeX
+    #     # self.f_unnormalizeY = f_unnormalizeY       
+    #     # self.norm_limsX = norm_limsX           
+    #     # self.norm_limsY = norm_limsY            
         
-        print(f' * loaded inputs: {inputs.shape}')
-        print(f' * loaded outputs: {outputs.shape}')
+    #     print(f' * loaded inputs: {inputs.shape}')
+    #     print(f' * loaded outputs: {outputs.shape}')
         
     
    
@@ -299,47 +310,70 @@ class NeuralNetworkTimeSeries():
     
 
 
-    def _train_autoencoder(device, input_train, input_test, compressed_dim, N_epochs, N_layers_autoencoder, learn_rate = .01, verbose = True):
+    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .01,  verbose = True):
+        
+        
+        input_train = f_load(train_test_indicies['train'][0])    
         
         N_features = input_train.shape[-1]       
         model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim, n_layers = N_layers_autoencoder)
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
-        
-        # if inputs.shape[1] !=1: 
-        #     inputs = torch.reshape(inputs, (-1, 1, inputs.shape[2]))
-        
         model.to(device)
-        input_train = input_train.to(device)
-        input_test = input_test.to(device)
-        
         model.train()      
         
         t0 = time.perf_counter()
         
-        for epoch in range(N_epochs):
-            optimizer.zero_grad()
+        
+        N_times_through_batches = 5  # time
+        N_batches = len(train_test_indicies['train'])
+        N_loadcases_per_batch = np.average([len(x) for x in NNTS.train_test_indicies['train']])
+                
+        epoch = 0
+        total_loadcases_trained_on = 0
+        
+        for j in range(N_times_through_batches):        
             
-            out_train = model(input_train)
-            loss_train = criterion(out_train, input_train) 
-            loss_train.backward(retain_graph=True)
-            loss_train_val = loss_train.item()
-            optimizer.step()  
+            for train_batch in train_test_indicies['train']:
+                
+                input_train = f_load(train_batch)
             
-            out_test = model(input_test)
-            loss_test = criterion(out_test, input_test)          
-            loss_test_val = loss_test.item()
-            
-            model.losses_train.append(float(loss_train_val))
-            model.losses_test.append(float(loss_test_val))
-                        
-            t1 = time.perf_counter()
-            dt = t1-t0
-
-            if (dt>=1.0 and verbose) or (epoch == 0) or (epoch == N_epochs-1):
-                print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
-                t0 = t1
+                n_lim = np.ceil(N_epochs * N_loadcases/(N_times_through_batches * N_batches * N_loadcases_per_batch)).astype(int)
+                for n in range(n_lim):
+                    optimizer.zero_grad()
                     
+                    out_train = model(input_train)
+                    loss_train = criterion(out_train, input_train) 
+                    loss_train.backward(retain_graph=True)
+                    loss_train_val = loss_train.item()
+                    optimizer.step()  
+                    
+                    total_loadcases_trained_on += input_train.shape[0]
+                                
+                    t1 = time.perf_counter()
+                    dt = t1-t0
+                    
+                    loss_test_val = 0
+                    
+                    epoch = total_loadcases_trained_on/N_loadcases
+
+                    if (dt>=1.0 and verbose) or (epoch == 0) or (epoch == N_epochs-1):
+                        print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}')
+                        t0 = t1
+                        
+                    model.losses_train.append((float(epoch), float(loss_train_val)))
+      
+                    
+            test_losses_per_batch = []
+            for test_batch in train_test_indicies['test']:   
+                input_test = f_load(test_batch)
+                out_test = model(input_test)
+                loss_test = criterion(out_test, input_test)          
+                test_losses_per_batch.append(loss_test.item())
+            loss_test_val = np.average(test_losses_per_batch)
+            model.losses_test.append((float(epoch), float(loss_test_val)))
+            print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
+
         return model
 
 
@@ -347,14 +381,17 @@ class NeuralNetworkTimeSeries():
         
         print_header(f'autoencoder sweep for {X_or_Y}')
         
-        device = self.device
+        N_loadcases = len(self.df_loadcases)
         
         if X_or_Y == 'X':
-            input_train = self.X_train
-            input_test = self.X_test
+            f_normalizeX = self.f_normalizeX
+            f_load = lambda indicies: f_normalizeX(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['X'])
+
         elif X_or_Y == 'Y':
-            input_train = self.Y_train
-            input_test = self.Y_test 
+            f_normalizeY = self.f_normalizeY
+            
+            
+            f_load = lambda indicies: f_normalizeY(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['Y'])
         else:
             raise(Exception('must be X or Y'))
         
@@ -362,7 +399,7 @@ class NeuralNetworkTimeSeries():
             
             print(f' * training autoencoder with {compressed_dim} compressed dimensions and {N_layers_autoencoder} layers for {N_epochs} epochs')
 
-            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(device, input_train, input_test, compressed_dim, N_epochs, N_layers_autoencoder)           
+            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(self.device,  self.train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases)           
             #print(f' * {compressed_dim} dimensions: loss = {autoencoder_model.losses[-1]:.4e}')
 
             if X_or_Y == 'X':
@@ -506,6 +543,26 @@ class NeuralNetworkTimeSeries():
        return None
         
    
+    def load_data_from_disk(df_loadcases, indicies, col, device):
+        
+        files = df_loadcases.loc[:, col].iloc[indicies].to_list()
+        
+        inputs = []
+        outputs = []
+        
+        for file in files:
+            (X, Y) = torch.load(file)
+            inputs.append(X)
+            outputs.append(Y)
+            
+        inputs = torch.stack(inputs).to(device)
+        outputs = torch.stack(outputs).to(device)
+        
+        return {'X':inputs, 'Y':outputs}
+        
+            
+        
+        
     
    
     def assess_fit(self):
@@ -523,15 +580,15 @@ class NeuralNetworkTimeSeries():
             NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred, output_folder = self.folders['plots_signals_dir'])
 
         
-    def _create_normalization(X):
+    # def _create_normalization(X):
                 
-        Xmax = X.amax(dim = (0, 1), keepdim = True)
-        Xmin = X.amin(dim = (0, 1), keepdim = True)
+    #     Xmax = X.amax(dim = (0, 1), keepdim = True)
+    #     Xmin = X.amin(dim = (0, 1), keepdim = True)
         
-        f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
-        f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
+    #     f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
+    #     f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
     
-        return f_normalize, f_unnormalize, (Xmin, Xmax)
+    #     return f_normalize, f_unnormalize, (Xmin, Xmax)
         
     
     def predict(self, X):
@@ -548,6 +605,8 @@ class NeuralNetworkTimeSeries():
     
     
     def  train_test_split(self, test_frac, batch_size):
+        
+         print_header('train test split with batches')
         
          N_loadcases = len(self.df_loadcases)
         
@@ -568,8 +627,7 @@ class NeuralNetworkTimeSeries():
         batches = {}
         batches['train'] = idx_train_batches
         batches['test'] = idx_test_batches
-
-        print(batches)
+        #print(batches)
         
         print(f' * train ({100-100*test_frac:.0f}%): {len(idx_train)} loadcases, {len(idx_train_batches)} batches, up to {batch_size} loadcases/batch')
         print(f' * test ({100*test_frac:.0f}%): {len(idx_test)} loadcases, {len(idx_test_batches)} batches, up to {batch_size} loadcases/batch')
@@ -587,8 +645,13 @@ class NeuralNetworkTimeSeries():
         fig.set_dpi(200)
         for key, data in autoencoders.items():
             
-            h = ax.plot(autoencoders[key].losses_train, label = f'train, {key} dimensions')
-            ax.plot(autoencoders[key].losses_test, linestyle = '--', label = f'test, {key} dimensions', color = h[0].get_color())
+            epoch = [x[0] for x in autoencoders[key].losses_test]
+            loss = [x[1] for x in autoencoders[key].losses_test]
+            h = ax.plot(epoch, loss, label = f'train, {key} dimensions')
+            
+            epoch = [x[0] for x in autoencoders[key].losses_train]
+            loss = [x[1] for x in autoencoders[key].losses_train]
+            ax.plot(epoch, loss, linestyle = '--', label = f'test, {key} dimensions', color = h[0].get_color())
             
             ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
             ax.set_yscale('log')
@@ -730,15 +793,15 @@ if __name__ == '__main__':
     N_outputs = 5
     N_loadcases = 20
     
-    batch_size = 3
-    test_frac = .3
+    batch_size = 3   # will load up to this many loadcases into memory at a time (RAM usage vs. disk read tradeoff)
+    test_frac = .3   # fraction of data to use for testing
     
     #autoencoder
-    N_epochs_autoencoderX = 50
+    N_epochs_autoencoderX = 200
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 50
+    N_epochs_autoencoderY = 200
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
@@ -766,18 +829,25 @@ if __name__ == '__main__':
     
     NNTS.train_test_split(test_frac, batch_size)
     
-    NNTS.load_data(inputs, outputs)
+         
+    
+    
+    # NNTS.load_data(inputs, outputs)
     
     NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
     NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
     
-    NNTS.reduce_dimensionality('X', N_dim_X_autoencoder)
-    NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
+    # NNTS.reduce_dimensionality('X', N_dim_X_autoencoder)
+    # NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
     
-    NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
-    NNTS.assess_fit()
+    # NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
+    # NNTS.assess_fit()
     
-    NNTS.wrapup()
+    # NNTS.wrapup()
 
 #%%
+
+#print(NNTS)
+
+
 
