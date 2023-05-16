@@ -9,30 +9,33 @@ if __name__ == '__main__':
 
     working_dir = 'demo_output\\'
 
-    # dataset
-    N_inputs = 3
-    N_outputs = 5
-    N_loadcases = 20
+    # fake dataset creation
+    N_inputs = 3                                    # number of input features
+    N_outputs = 5                                   # number of output features
+    N_loadcases = 20                                # number of cases (runs)
     
-    batch_size = 3   # will load up to this many loadcases into memory at a time (RAM usage vs. disk read tradeoff)
-    test_frac = .3   # fraction of data to use for testing
+    # training options
+    batch_size = 3                                  # will load up to this many loadcases into memory at a time (RAM usage vs. disk read tradeoff)
+    test_frac = .3                                  # fraction of data to use for testing
     
-    #autoencoder
-    N_epochs_autoencoderX = 50
-    trial_dims_autoencoderX = range(1, N_inputs+1)
-    N_layers_autoencoderX = 1
+    # input autoencoder
+    N_epochs_autoencoderX = 50                      # epochs to train autoencoder
+    trial_dims_autoencoderX = range(1, N_inputs+1)  # list of compressed dimensions to try
+    N_layers_autoencoderX = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
     
-    N_epochs_autoencoderY = 100
-    trial_dims_autoencoderY = range(1, N_outputs+1)
-    N_layers_autoencoderY = 1
+    # output autoencoder
+    N_epochs_autoencoderY = 100                     # epochs to train autoencoder
+    trial_dims_autoencoderY = range(1, N_outputs+1) # list of compressed dimensions to try
+    N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
     
-    N_dim_X_autoencoder = N_inputs
-    N_dim_Y_autoencoder = N_outputs
+    # autoencoder final choices
+    N_dim_X_autoencoder = N_inputs                  # chosen number of dimensions to encode inputs
+    N_dim_Y_autoencoder = N_outputs                 # chosen number of dimensions to encode outputs
     
-    # RNN
-    N_epochs_RNN = 100
-    N_layers_RNN = 1
-    N_hidden_dim_RNN = 100
+    # timeseries model
+    N_epochs_RNN = 100                              # epochs to train timeseries model (RNN)
+    N_layers_RNN = 1                                # RNN layers (start with 1, then increase if a more complicated model is needed)
+    N_hidden_dim_RNN = 100                          # RNN memory length: increase to lengthen memory of past input values (should be at least time constant of the system)
     
     
     #%% PIPELINE
