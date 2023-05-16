@@ -17,6 +17,8 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 os.environ['CUDA_VISIBLE_DEVICES'] ='0'
 
+#TODO: Add gradient clipping
+
 
 #%%
 
@@ -244,7 +246,7 @@ class NeuralNetworkTimeSeries():
     
 
 
-    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .01,  verbose = True):
+    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .01,  verbose = True, gradiant_clip = True):
         
         
         input_train = f_load(train_test_indicies['train'][0])    
@@ -280,6 +282,12 @@ class NeuralNetworkTimeSeries():
                     loss_train = criterion(out_train, input_train) 
                     loss_train.backward(retain_graph=True)
                     loss_train_val = loss_train.item()
+                    
+                                        
+                    if gradiant_clip == True:
+                        nn.utils.clip_grad_value_(model.parameters(), clip_value=.1)
+                    
+                    
                     optimizer.step()  
                     
                     total_loadcases_trained_on += input_train.shape[0]
@@ -383,7 +391,7 @@ class NeuralNetworkTimeSeries():
         
         
         
-    def train_timeseries_model(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = False):
+    def train_timeseries_model(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = True):
         
         print_header('train timeseries model')
 
@@ -432,7 +440,7 @@ class NeuralNetworkTimeSeries():
                     loss_train.backward(retain_graph=True)
                     
                     if gradiant_clip == True:
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+                        nn.utils.clip_grad_value_(model.parameters(), clip_value=.1)
                     
                     optimizer.step()  
                     loss_train_val = loss_train.item()
@@ -497,21 +505,6 @@ class NeuralNetworkTimeSeries():
         
         print(f' * saved {fn}')
     
-       
-        # fig, ax = plt.subplots(2, 1)
-        # ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
-        # ax[0].scatter(Y_actual.cpu().detach().numpy().ravel(), Y_predicted.cpu().detach().numpy().ravel())
-        # ax[0].set_xlabel('actual values')
-        # ax[0].set_ylabel('predicted values)')    
-        # ax[0].grid(c = [.9, .9, .9])
-        # ax[0].set_axisbelow(True)
-        # ax[1].hist(error.cpu().detach().numpy().ravel())
-        # ax[1].set_title(f'error')
-        # ax[1].grid(c = [.9, .9, .9])
-        # ax[1].set_axisbelow(True)
-        # fig.set_dpi(200)
-        # fig.tight_layout()
-      
         return None
         
    
