@@ -103,22 +103,10 @@ class NeuralNetworkTimeSeries():
     
     def __init__(self, working_dir):
         self.device = None
-        # self.X_cur = None
-        # self.Y_cur = None
-        # self.X_train = None
-        # self.X_test= None
-        # self.Y_train = None
-        # self.Y_test = None
-        self.X_normalization = None
-        self.Y_normalization = None
         self.autoencodersX = {}
         self.autoencodersY = {}
         self.autoencoderX = None
         self.autoencoderY = None          
-        self.X_train_encoded = None
-        self.X_test_encoded = None
-        self.Y_train_encoded = None
-        self.Y_test_encoded = None
         self.model = None
         self.working_dir = working_dir
         self.folders = {}
@@ -202,8 +190,6 @@ class NeuralNetworkTimeSeries():
         
         print_header('normalization functions')
         
-        #dict_keys(['input_min_vals', 'input_max_vals', 'output_min_vals', 'output_max_vals'])
-        
         
         def neg1_to1_norm(Xmin, Xmax):        
             
@@ -229,59 +215,7 @@ class NeuralNetworkTimeSeries():
         
         print(' * done generating normalization functions')
         
-    
-    
-    # def load_data(self, inputs, outputs):
-        
-        
-    #     print_header('load data')
-        
-    #     device = self.device
-        
-    #     X = torch.from_numpy(inputs).float().to(device)
-    #     Y = torch.from_numpy(outputs).float().to(device)
-        
-        
-    #     f_normalizeX, f_unnormalizeX, norm_limsX =  NeuralNetworkTimeSeries._create_normalization(X)
-    #     f_normalizeY, f_unnormalizeY, norm_limsY =  NeuralNetworkTimeSeries._create_normalization(Y)
 
-    #     X_train_raw, X_test_raw = NeuralNetworkTimeSeries._train_test_split(X, test_frac = .3)
-    #     Y_train_raw, Y_test_raw = NeuralNetworkTimeSeries._train_test_split(Y, test_frac = .3)
-
-        
-
-        
-    #     X_train = f_normalizeX(X_train_raw)
-    #     X_test = f_normalizeX(X_test_raw)
-    #     Y_train = f_normalizeY(Y_train_raw)
-    #     Y_test = f_normalizeY(Y_test_raw)
-        
-        
-        
-    #     self.X_train_raw = X_train_raw
-    #     self.X_test_raw = X_test_raw
-    #     self.Y_train_raw = Y_train_raw
-    #     self.Y_test_raw = Y_test_raw       
-        
-    #     self.X_train = X_train
-    #     self.X_test = X_test
-    #     self.Y_train = Y_train
-    #     self.Y_test = Y_test
-        
-    #     # self.f_normalizeX = f_normalizeX
-    #     # self.f_normalizeY = f_normalizeY        
-    #     # self.f_unnormalizeX = f_unnormalizeX
-    #     # self.f_unnormalizeY = f_unnormalizeY       
-    #     # self.norm_limsX = norm_limsX           
-    #     # self.norm_limsY = norm_limsY            
-        
-    #     print(f' * loaded inputs: {inputs.shape}')
-    #     print(f' * loaded outputs: {outputs.shape}')
-        
-    
-   
-    
-    
 
     def __str__(self):
         
@@ -417,28 +351,38 @@ class NeuralNetworkTimeSeries():
             raise(Exception('must be X or Y'))    
         
 
-    def reduce_dimensionality(self, X_or_Y, N):
+    def normalize_and_reduce_dimensionality(self, Nx, Ny):
         
-        print_header(f'Reduce {X_or_Y} dimensionality')
-        if X_or_Y == 'X':
-            model = self.autoencodersX[N]
-            self.autoencoderX = model
-            self.X_train_encoded = model.encoder(self.X_train)
-            self.X_test_encoded = model.encoder(self.X_test)
-            print(f' * X training:   {self.X_train.shape} -> {self.X_train_encoded.shape}')
-            print(f' * X testing:   {self.X_test.shape} -> {self.X_test_encoded.shape}')       
+        print_header(f'Normalize and reduce dimensionality via autoencoder')
+   
+        df_loadcases = self.df_loadcases
+   
+    
+        modelX = self.autoencodersX[Nx]
+        modelY = self.autoencodersY[Ny]
+        f_normalizeX = self.f_normalizeX
+        f_normalizeY = self.f_normalizeY
+
+        print(f' * reducing inputs to {Nx} dimensions')
+        print(f' * reducing outputs to {Ny} dimensions')
+
+        for idx in range(len(df_loadcases)):
+            encoded_dataX = f_normalizeX(NeuralNetworkTimeSeries.load_data_from_disk(df_loadcases, [idx,], 'fn_raw_data', self.device)['X'])
+            encoded_dataX = modelX.encoder(encoded_dataX)
+            encoded_dataX = encoded_dataX[0, :, :]
             
-        elif X_or_Y == 'Y':
-            model = self.autoencodersY[N]
-            self.autoencoderY = model
-            self.Y_train_encoded = model.encoder(self.Y_train)
-            self.Y_test_encoded = model.encoder(self.Y_test)        
-            print(f' * Y training:   {self.Y_train.shape} -> {self.Y_train_encoded.shape}')
-            print(f' * Y testing:   {self.Y_test.shape} -> {self.Y_test_encoded.shape}')
+            encoded_dataY = f_normalizeY(NeuralNetworkTimeSeries.load_data_from_disk(df_loadcases, [idx,], 'fn_raw_data', self.device)['Y'])
+            encoded_dataY = modelY.encoder(encoded_dataY)
+            encoded_dataY = encoded_dataY[0, :, :]          
+            
+            name = df_loadcases.loc[:, 'name'].iloc[idx]
 
-        else:
-            raise(Exception('must be X or Y'))
-
+            fn = os.path.join(self.folders['data_encoded_dir'],  f'{name}.pkl')
+            torch.save((encoded_dataX, encoded_dataY), fn)
+            
+            print(f' * saved {fn}')
+        
+        
         
     def train(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = False):
         
@@ -579,16 +523,6 @@ class NeuralNetworkTimeSeries():
     
             NeuralNetworkTimeSeries._error_plot(X_test, Y_test, Y_pred, output_folder = self.folders['plots_signals_dir'])
 
-        
-    # def _create_normalization(X):
-                
-    #     Xmax = X.amax(dim = (0, 1), keepdim = True)
-    #     Xmin = X.amin(dim = (0, 1), keepdim = True)
-        
-    #     f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
-    #     f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
-    
-    #     return f_normalize, f_unnormalize, (Xmin, Xmax)
         
     
     def predict(self, X):
@@ -797,16 +731,16 @@ if __name__ == '__main__':
     test_frac = .3   # fraction of data to use for testing
     
     #autoencoder
-    N_epochs_autoencoderX = 200
+    N_epochs_autoencoderX = 50
     trial_dims_autoencoderX = range(1, N_inputs+1)
     N_layers_autoencoderX = 1
     
-    N_epochs_autoencoderY = 200
+    N_epochs_autoencoderY = 50
     trial_dims_autoencoderY = range(1, N_outputs+1)
     N_layers_autoencoderY = 1
     
-    N_dim_X_autoencoder = 3
-    N_dim_Y_autoencoder = 5
+    N_dim_X_autoencoder = 2
+    N_dim_Y_autoencoder = 3
     
     # RNN
     N_epochs_RNN = 100
@@ -837,7 +771,7 @@ if __name__ == '__main__':
     NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)
     NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY)
     
-    # NNTS.reduce_dimensionality('X', N_dim_X_autoencoder)
+    NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder)
     # NNTS.reduce_dimensionality('Y', N_dim_Y_autoencoder)
     
     # NNTS.train(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN)
