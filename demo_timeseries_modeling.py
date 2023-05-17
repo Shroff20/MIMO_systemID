@@ -12,7 +12,7 @@ N_outputs = 5                                   # number of output features
 N_loadcases = 20                                # number of cases (runs)
 
 # training options
-batch_size = 3                                  # will load up to this many loadcases into memory at a time (RAM usage vs. disk read tradeoff)
+batch_size = 10                                  # will load up to this many loadcases into memory at a time (RAM usage vs. disk read tradeoff)
 test_frac = .3                                  # fraction of data to use for testing
 
 # input autoencoder
