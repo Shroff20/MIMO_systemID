@@ -197,17 +197,17 @@ class NeuralNetworkTimeSeries():
         
     def _neg1_to1_norm(self, Xmin, Xmax):        
           
-          Xmin = Xmin.reshape(1, 1, -1)
-          Xmax = Xmax.reshape(1, 1, -1)
-          
-          if type(Xmin) == np.ndarray:
-              Xmin = torch.from_numpy(Xmin).float().to(self.device)
-          if type(Xmax) == np.ndarray:
-              Xmax = torch.from_numpy(Xmax).float().to(self.device)           
-          
-          f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
-          f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
-          return f_normalize, f_unnormalize
+        Xmin = Xmin.reshape(1, 1, -1)
+        Xmax = Xmax.reshape(1, 1, -1)
+        
+        if type(Xmin) == np.ndarray:
+            Xmin = torch.from_numpy(Xmin).float().to(self.device)
+        if type(Xmax) == np.ndarray:
+            Xmax = torch.from_numpy(Xmax).float().to(self.device)           
+        
+        f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
+        f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
+        return f_normalize, f_unnormalize
     
     def generate_normalization_functions(self):
         
