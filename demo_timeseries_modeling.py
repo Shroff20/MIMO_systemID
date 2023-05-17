@@ -17,12 +17,12 @@ test_frac = .3                                  # fraction of data to use for te
 
 # input autoencoder
 N_epochs_autoencoderX = 50                      # epochs to train autoencoder
-trial_dims_autoencoderX = range(1, N_inputs+1)  # list of compressed dimensions to try
+trial_dims_autoencoderX = [1, N_inputs]         # list of compressed dimensions to try
 N_layers_autoencoderX = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 
 # output autoencoder
-N_epochs_autoencoderY = 100                     # epochs to train autoencoder
-trial_dims_autoencoderY = range(1, N_outputs+1) # list of compressed dimensions to try
+N_epochs_autoencoderY = 100                   # epochs to train autoencoder
+trial_dims_autoencoderY = [1, N_outputs]        # list of compressed dimensions to try
 N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 
 # autoencoder final choices
@@ -32,7 +32,7 @@ N_dim_Y_autoencoder = N_outputs                 # chosen number of dimensions to
 # timeseries model
 N_epochs_RNN = 100                              # epochs to train timeseries model (RNN)
 N_layers_RNN = 1                                # RNN layers (start with 1, then increase if a more complicated model is needed)
-N_hidden_dim_RNN = 100                          # RNN memory length: increase to lengthen memory of past input values (should be at least time constant of the system)
+N_hidden_dim_RNN = 10                          # RNN memory length: increase to lengthen memory of past input values (should be at least time constant of the system)
 
 
 #%% PIPELINE
@@ -45,7 +45,6 @@ NNTS = NeuralNetworkTimeSeries(working_dir = working_dir) # initialize model
 for i in range(inputs.shape[0]):
     NNTS.add_loadcase_data(f'loadcase_{i}', inputs[i, :, :], outputs[i, :, :]) # loadcase name, [N_timesteps, N_inputs],   [N_timesteps, N_outputs]
 
-NNTS.generate_normalization_functions() # generates -1 to 1 normalization for all inputs and outputs based on the loadcases added
 NNTS.train_test_split(test_frac, batch_size) # splits into train and text batches
 
 NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)  # trains autoencoders for the input of various dimensionality for review

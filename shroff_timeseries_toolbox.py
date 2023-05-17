@@ -83,6 +83,12 @@ class FakeDataMaker():
                 for j in range(N_inputs):
                     t, dY, _ = signal.lsim(G[i, j], U[p, :, j], t)
                     Y[p, :, i] += dY
+        
+        np.random.seed(0)
+        Y_offset = np.random.rand(5)[None, None, :]-.5
+        Y = Y + Y_offset        
+        
+        
         print(f' * done computing actual output: (loadcases, timesteps, features) = {Y.shape}')
                 
         return Y
@@ -195,34 +201,79 @@ class NeuralNetworkTimeSeries():
         print(f' * {name}: {inputs.shape[1]} inputs, {outputs.shape[1]} outputs, {inputs.shape[0]} timesteps')
     
         
-    def _neg1_to1_norm(self, Xmin, Xmax):        
+    # def _neg1_to1_norm(self, Xmin, Xmax):        
           
-        Xmin = Xmin.reshape(1, 1, -1)
-        Xmax = Xmax.reshape(1, 1, -1)
+    #     Xmin = Xmin.reshape(1, 1, -1)
+    #     Xmax = Xmax.reshape(1, 1, -1)
         
-        if type(Xmin) == np.ndarray:
-            Xmin = torch.from_numpy(Xmin).float().to(self.device)
-        if type(Xmax) == np.ndarray:
-            Xmax = torch.from_numpy(Xmax).float().to(self.device)           
+    #     if type(Xmin) == np.ndarray:
+    #         Xmin = torch.from_numpy(Xmin).float().to(self.device)
+    #     if type(Xmax) == np.ndarray:
+    #         Xmax = torch.from_numpy(Xmax).float().to(self.device)           
         
-        f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
-        f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
-        return f_normalize, f_unnormalize
+    #     def f_normalize(y):
+            
+    #         if type(y) == np.ndarray:
+    #             y = torch.from_numpy(y).float().to(self.device)
+            
+    #         return 2*(y-Xmin)/(Xmax-Xmin) - 1
+        
+    #     def f_unnormalize(y):
+            
+    #         if type(y) == np.ndarray:
+    #             y = torch.from_numpy(y).float().to(self.device)
+            
+    #         return (y + 1)*(Xmax-Xmin)/2 + Xmin
+        
+        
+    #     # f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
+    #     # f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
+        
+        
+        
+    #     return f_normalize, f_unnormalize
     
-    def generate_normalization_functions(self):
+    
+    def _normalize(self, data, X_or_Y, normalize_or_unnormalize):
         
-        print_header('normalization functions')
+        if X_or_Y == 'X':
+            min_vals = self.normalization_data['input_min_vals'].reshape(1, 1, -1)
+            max_vals = self.normalization_data['input_max_vals'].reshape(1, 1, -1)
+        elif X_or_Y == 'Y':
+            min_vals = self.normalization_data['output_min_vals'].reshape(1, 1, -1)
+            max_vals = self.normalization_data['output_max_vals'].reshape(1, 1, -1)
+        else: 
+            raise Exception('must be X or Y')
+        
+        if type(min_vals) == np.ndarray:
+            min_vals = torch.from_numpy(min_vals).float().to(self.device)
+        if type(max_vals) == np.ndarray:
+            max_vals = torch.from_numpy(max_vals).float().to(self.device)      
+        
+        # -1 to 1 normalization and reverse normalization
+        if normalize_or_unnormalize == 'normalize':
+            transformed_data = 2*(data-min_vals)/(max_vals-min_vals) - 1
+        elif normalize_or_unnormalize == 'unnormalize':
+            transformed_data = (data + 1)*(max_vals-min_vals)/2 + min_vals
+        else:
+            raise Exception('must be normalize or unnormalize')
+    
+        return transformed_data
+    
+    # def generate_normalization_functions(self):
+        
+    #     print_header('normalization functions')
     
         
-        f_normalizeX, f_unnormalizeX = self._neg1_to1_norm(self.normalization_data['input_min_vals'], self.normalization_data['input_max_vals'])
-        f_normalizeY, f_unnormalizeY = self._neg1_to1_norm(self.normalization_data['output_min_vals'], self.normalization_data['output_max_vals'])
+    #     f_normalizeX, f_unnormalizeX = self._neg1_to1_norm(self.normalization_data['input_min_vals'], self.normalization_data['input_max_vals'])
+    #     f_normalizeY, f_unnormalizeY = self._neg1_to1_norm(self.normalization_data['output_min_vals'], self.normalization_data['output_max_vals'])
 
-        self.f_normalizeX = f_normalizeX
-        self.f_normalizeY = f_normalizeY        
-        self.f_unnormalizeX = f_unnormalizeX
-        self.f_unnormalizeY = f_unnormalizeY    
+    #     self.f_normalizeX = f_normalizeX
+    #     self.f_normalizeY = f_normalizeY        
+    #     self.f_unnormalizeX = f_unnormalizeX
+    #     self.f_unnormalizeY = f_unnormalizeY    
         
-        print(' * done generating normalization functions')
+    #     print(' * done generating normalization functions')
         
 
 
@@ -333,11 +384,11 @@ class NeuralNetworkTimeSeries():
         N_loadcases = len(self.df_loadcases)
         
         if X_or_Y == 'X':
-            f_normalizeX = self.f_normalizeX
-            f_load = lambda indicies: f_normalizeX(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['X'])
+            f_normalize = lambda data: self._normalize(data, 'X', 'normalize')
+            f_load = lambda indicies: f_normalize(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['X'])
         elif X_or_Y == 'Y':
-            f_normalizeY = self.f_normalizeY
-            f_load = lambda indicies: f_normalizeY(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['Y'])
+            f_normalize = lambda data: self._normalize(data, 'Y', 'normalize')
+            f_load = lambda indicies: f_normalize(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['Y'])
         else:
             raise(Exception('must be X or Y'))
         
@@ -372,8 +423,8 @@ class NeuralNetworkTimeSeries():
         self.autoencoderX = modelX
         self.autoencoderY = modelY
         
-        f_normalizeX = self.f_normalizeX
-        f_normalizeY = self.f_normalizeY
+        f_normalizeX = lambda data: self._normalize(data, 'X', 'normalize')
+        f_normalizeY = lambda data: self._normalize(data, 'Y', 'normalize')
 
         print(f' * reducing inputs to {Nx} dimensions')
         print(f' * reducing outputs to {Ny} dimensions')
@@ -556,10 +607,14 @@ class NeuralNetworkTimeSeries():
             #NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
             
             
-            fx = self.f_normalizeX
-            fy = self.f_normalizeY
+            fx = lambda data: self._normalize(data, 'X', 'normalize')
+            fy = lambda data: self._normalize(data, 'Y', 'normalize')
         
+            print(fx(X).max(), fx(X).min())
+            print(fy(Y_actual).max(), fy(Y_actual).min())
+
             if plot_normalized == True and plot == True:
+                print('normalized')
                 NeuralNetworkTimeSeries._error_plot(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
             elif plot == True:
                 NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
@@ -570,12 +625,12 @@ class NeuralNetworkTimeSeries():
     def predict(self, X):
         if type(X) == np.ndarray:
             X = torch.from_numpy(X).float().to(self.device)
-        
-        X = self.f_normalizeX(X)
+            
+        X = self._normalize(X, 'X', 'normalize')
         X = self.autoencoderX.encoder(X)
-        X, _ = self.model(X)
+        X, _ = self.model(X)  # this is really Y as output, but reassigning to save memory
         X = self.autoencoderY.decoder(X)
-        X = self.f_unnormalizeY(X)
+        X = self._normalize(X, 'Y', 'unnormalize')
         
         return X     
     
