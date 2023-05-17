@@ -12,6 +12,7 @@ import scipy.signal as signal
 import torch.nn as nn
 import time
 import pandas as pd
+import pickle
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"  # fix install to be able to remove this
@@ -113,10 +114,11 @@ class NeuralNetworkTimeSeries():
         self.normalization_data = None
         self.df_loadcases = pd.DataFrame(columns = ['name', 'fn_raw_data', 'fn_encoded_data'])
         self.train_test_indicies = None
-        self.make_directory_system()
+        
         
         print_header('initialization')
-        
+        self._make_directory_system()
+
         # set cpu or gpu as device
         if torch.cuda.is_available():
             device = torch.device("cuda")
@@ -129,7 +131,7 @@ class NeuralNetworkTimeSeries():
         pass
     
     
-    def make_directory_system(self):
+    def _make_directory_system(self):
         
         working_dir = self.working_dir
         
@@ -138,13 +140,14 @@ class NeuralNetworkTimeSeries():
         dirs['data_encoded_dir'] = os.path.join(working_dir, 'data', 'encoded_data')
         dirs['plots_losses_dir'] = os.path.join(working_dir, 'plots', 'losses')
         dirs['plots_signals_dir'] = os.path.join(working_dir, 'plots', 'signal_predictions')
+        dirs['models_dir'] = os.path.join(working_dir, 'models')
 
         for path in dirs.values():
             os.makedirs(path, exist_ok = True)
         
         self.folders = dirs
         
-    def add_loadcase_data(self, name, inputs, outputs):
+    def add_loadcase_data(self, name, inputs, outputs, overwrite_existing = False):
         
         if type(inputs) == np.ndarray:
             inputs = torch.from_numpy(inputs).float()
@@ -164,7 +167,11 @@ class NeuralNetworkTimeSeries():
         output_min_vals, output_max_vals = _get_min_max(outputs)
         
         fn = os.path.join(self.folders['data_raw_dir'],  f'{name}.pkl')
-        torch.save((inputs, outputs), fn)
+        
+        if os.path.exists(fn) and (overwrite_existing == False):
+            print(f' * {name} data already exists and will not be re-added')
+        else:
+            torch.save((inputs, outputs), fn)
         
         # update the maxes and mins seen over all loadcases
         if self.normalization_data == None:
@@ -185,30 +192,30 @@ class NeuralNetworkTimeSeries():
         
         self.df_loadcases.loc[name, :] = data
         
-        print(f' * added {name}: {inputs.shape[1]} inputs, {outputs.shape[1]} outputs, {inputs.shape[0]} timesteps')
+        print(f' * {name}: {inputs.shape[1]} inputs, {outputs.shape[1]} outputs, {inputs.shape[0]} timesteps')
     
         
+    def _neg1_to1_norm(self, Xmin, Xmax):        
+          
+          Xmin = Xmin.reshape(1, 1, -1)
+          Xmax = Xmax.reshape(1, 1, -1)
+          
+          if type(Xmin) == np.ndarray:
+              Xmin = torch.from_numpy(Xmin).float().to(self.device)
+          if type(Xmax) == np.ndarray:
+              Xmax = torch.from_numpy(Xmax).float().to(self.device)           
+          
+          f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
+          f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
+          return f_normalize, f_unnormalize
+    
     def generate_normalization_functions(self):
         
         print_header('normalization functions')
+    
         
-        
-        def neg1_to1_norm(Xmin, Xmax):        
-            
-            Xmin = Xmin.reshape(1, 1, -1)
-            Xmax = Xmax.reshape(1, 1, -1)
-            
-            if type(Xmin) == np.ndarray:
-                Xmin = torch.from_numpy(Xmin).float().to(self.device)
-            if type(Xmax) == np.ndarray:
-                Xmax = torch.from_numpy(Xmax).float().to(self.device)           
-            
-            f_normalize = lambda y:  2*(y-Xmin)/(Xmax-Xmin) - 1
-            f_unnormalize = lambda y:  (y + 1)*(Xmax-Xmin)/2 + Xmin
-            return f_normalize, f_unnormalize
-        
-        f_normalizeX, f_unnormalizeX = neg1_to1_norm(self.normalization_data['input_min_vals'], self.normalization_data['input_max_vals'])
-        f_normalizeY, f_unnormalizeY = neg1_to1_norm(self.normalization_data['output_min_vals'], self.normalization_data['output_max_vals'])
+        f_normalizeX, f_unnormalizeX = self._neg1_to1_norm(self.normalization_data['input_min_vals'], self.normalization_data['input_max_vals'])
+        f_normalizeY, f_unnormalizeY = self._neg1_to1_norm(self.normalization_data['output_min_vals'], self.normalization_data['output_max_vals'])
 
         self.f_normalizeX = f_normalizeX
         self.f_normalizeY = f_normalizeY        
@@ -530,7 +537,7 @@ class NeuralNetworkTimeSeries():
         
     
    
-    def assess_fit(self):
+    def assess_fit(self, plot = True, plot_normalized = True):
         
         print_header('assess fit on training data')
     
@@ -546,8 +553,18 @@ class NeuralNetworkTimeSeries():
             Y_pred = self.predict(X)
             name = df_loadcases['name'].iloc[idx]
             print(name)
-            NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
-
+            #NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
+            
+            
+            fx = self.f_normalizeX
+            fy = self.f_normalizeY
+        
+            if plot_normalized == True and plot == True:
+                NeuralNetworkTimeSeries._error_plot(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
+            elif plot == True:
+                NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
+            else:
+                print(' * no plots generated because plot = False')
     
     
     def predict(self, X):
@@ -594,7 +611,17 @@ class NeuralNetworkTimeSeries():
         return batches
     
 
+    def save_model(self):
+        print_header('save model')
+        fn = os.path.join(self.folders['models_dir'], 'all_models.pkl')
+        with open(fn, 'wb') as h:
+            pickle.dump(self, h, pickle.HIGHEST_PROTOCOL)
+        print(' * saved {fn}')
+        
     def wrapup(self):
+        
+        
+        
         
         print_header('done')
 
@@ -631,7 +658,8 @@ class GRUNet(nn.Module):
         super(GRUNet, self).__init__()
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
-        
+        if n_layers >1:
+            drop_prob = 0  # cant have dropout with 1 layer only
         self.gru = nn.GRU(input_dim, hidden_dim, n_layers, batch_first=True, dropout=drop_prob)
         self.fc = nn.Linear(hidden_dim, output_dim)
         self.losses_train = []
