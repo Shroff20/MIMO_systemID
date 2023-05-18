@@ -564,17 +564,11 @@ class NeuralNetworkTimeSeries():
             Y_actual = data['Y']
             Y_pred = self.predict(X)
             name = df_loadcases['name'].iloc[idx]
-            print(f' * assessming {name}')
-            
             
             fx = lambda data: self._normalize(data, 'X', 'normalize')
             fy = lambda data: self._normalize(data, 'Y', 'normalize')
         
-            print(fx(X).max(), fx(X).min(), X.max(),X.min())
-            print(fy(Y_actual).max(), fy(Y_actual).min(), Y_actual.max(), Y_actual.min())
-
             if plot_normalized == True and plot == True:
-                print('normalized')
                 NeuralNetworkTimeSeries._error_plot(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
             elif plot == True:
                 NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
@@ -631,7 +625,7 @@ class NeuralNetworkTimeSeries():
         fn = os.path.join(self.folders['models_dir'], 'all_models.pkl')
         with open(fn, 'wb') as h:
             pickle.dump(self, h, pickle.HIGHEST_PROTOCOL)
-        print(' * saved {fn}')
+        print(f' * saved model to {fn}')
         
     def wrapup(self):
         

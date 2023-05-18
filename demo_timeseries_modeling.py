@@ -52,9 +52,8 @@ NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_la
 
 NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder) # normalizes data and compresses input and output based on chosen dimensionality
 NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN) # trains timeseries model
-#NNTS.save_model() # this does not work yet TODO
+NNTS.save_model() # save model to pkl file
 NNTS.assess_fit() # assses fit of the final model
 NNTS.wrapup() # wrap up study
 
-
-
+#%%
