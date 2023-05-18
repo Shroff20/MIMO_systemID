@@ -13,7 +13,7 @@ import torch.nn as nn
 import time
 import pandas as pd
 import pickle
-
+from functools import lru_cache
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"  # fix install to be able to remove this
 os.environ['CUDA_VISIBLE_DEVICES'] ='0'
@@ -121,7 +121,6 @@ class NeuralNetworkTimeSeries():
         self.df_loadcases = pd.DataFrame(columns = ['name', 'fn_raw_data', 'fn_encoded_data'])
         self.train_test_indicies = None
         
-        
         print_header('initialization')
         self._make_directory_system()
 
@@ -136,23 +135,11 @@ class NeuralNetworkTimeSeries():
         
         pass
     
+    def __str__(self):
+        NeuralNetworkTimeSeries._dict_print(vars(self), name = type(self))
+        return ''
     
-    def _make_directory_system(self):
-        
-        working_dir = self.working_dir
-        
-        dirs = {}
-        dirs['data_raw_dir'] = os.path.join(working_dir, 'data', 'raw_data')
-        dirs['data_encoded_dir'] = os.path.join(working_dir, 'data', 'encoded_data')
-        dirs['plots_losses_dir'] = os.path.join(working_dir, 'plots', 'losses')
-        dirs['plots_signals_dir'] = os.path.join(working_dir, 'plots', 'signal_predictions')
-        dirs['models_dir'] = os.path.join(working_dir, 'models')
-
-        for path in dirs.values():
-            os.makedirs(path, exist_ok = True)
-        
-        self.folders = dirs
-        
+    
     def add_loadcase_data(self, name, inputs, outputs, overwrite_existing = False):
         
         if type(inputs) == np.ndarray:
@@ -202,140 +189,16 @@ class NeuralNetworkTimeSeries():
     
     
     
-    def _normalize(self, data, X_or_Y, normalize_or_unnormalize):
+    def  train_test_split(self, test_frac, batch_size):
         
-        if X_or_Y == 'X':
-            min_vals = self.normalization_data['input_min_vals'].reshape(1, 1, -1)
-            max_vals = self.normalization_data['input_max_vals'].reshape(1, 1, -1)
-        elif X_or_Y == 'Y':
-            min_vals = self.normalization_data['output_min_vals'].reshape(1, 1, -1)
-            max_vals = self.normalization_data['output_max_vals'].reshape(1, 1, -1)
-        else: 
-            raise Exception('must be X or Y')
+         print_header('train test split with batches')
         
-        if type(min_vals) == np.ndarray:
-            min_vals = torch.from_numpy(min_vals).float().to(self.device)
-        if type(max_vals) == np.ndarray:
-            max_vals = torch.from_numpy(max_vals).float().to(self.device)      
+         N_loadcases = len(self.df_loadcases)
         
-        # # -1 to 1 normalization and reverse normalization
-        # if normalize_or_unnormalize == 'normalize':
-        #     transformed_data = 2*(data-min_vals)/(max_vals-min_vals) - 1
-        # elif normalize_or_unnormalize == 'unnormalize':
-        #     transformed_data = (data + 1)*(max_vals-min_vals)/2 + min_vals
-        # else:
-        #     raise Exception('must be normalize or unnormalize')
-        
-        # 0 to 1 normalization and reverse normalization
-        if normalize_or_unnormalize == 'normalize':
-            transformed_data = (data-min_vals)/(max_vals-min_vals)
-        elif normalize_or_unnormalize == 'unnormalize':
-            transformed_data = data*(max_vals-min_vals) + min_vals
-        else:
-            raise Exception('must be normalize or unnormalize')
-        
-        
-        return transformed_data
-    
-
-    def __str__(self):
-        
-        NeuralNetworkTimeSeries._dict_print(vars(self), name = type(self))
-        
-        return ''
-    
-    def _dict_print(d, name = ''):
-        print('\n')
-        print(name)
-        for key, val in d.items():
-            try:
-                print(f' * {key}: {val.shape}')
-            except:
-                print(f' * {key}: {val}')
-   
-    
-    def _train_test_split(X, test_frac = .3):
-        
-        N_test = int(np.ceil(X.shape[0]*test_frac))
-        X_test = X[:N_test, :, :]
-        X_train = X[N_test:, :, :]
-        
-        return X_train, X_test     
-
-    
-
-
-    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .01,  verbose = True, gradiant_clip = True):
-        
-        
-        input_train = f_load(train_test_indicies['train'][0])    
-        
-        N_features = input_train.shape[-1]       
-        model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim, n_layers = N_layers_autoencoder)
-        criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
-        model.to(device)
-        model.train()      
-        
-        t0 = time.perf_counter()
-        
-        
-        N_times_through_batches = 5  # time
-        N_batches = len(train_test_indicies['train'])
-        N_loadcases_per_batch = np.average([len(x) for x in train_test_indicies['train']])
-                
-        epoch = 0
-        total_loadcases_trained_on = 0
-        
-        for j in range(N_times_through_batches):        
+         train_test_indicies  = NeuralNetworkTimeSeries._train_test_split_with_batches(batch_size, test_frac, N_loadcases)
+         
+         self.train_test_indicies = train_test_indicies
             
-            for train_batch in train_test_indicies['train']:
-                
-                input_train = f_load(train_batch)
-            
-                n_lim = np.ceil(N_epochs * N_loadcases/(N_times_through_batches * N_batches * N_loadcases_per_batch)).astype(int)
-                for n in range(n_lim):
-                    optimizer.zero_grad()
-                    
-                    out_train = model(input_train)
-                    loss_train = criterion(out_train, input_train) 
-                    loss_train.backward(retain_graph=True)
-                    loss_train_val = loss_train.item()
-                    
-                                        
-                    if gradiant_clip == True:
-                        nn.utils.clip_grad_value_(model.parameters(), clip_value=.01)
-                    
-                    
-                    optimizer.step()  
-                    
-                    total_loadcases_trained_on += input_train.shape[0]
-                                
-                    t1 = time.perf_counter()
-                    dt = t1-t0
-                    
-                    loss_test_val = 0
-                    
-                    epoch = total_loadcases_trained_on/N_loadcases
-
-                    if (dt>=1.0 and verbose) or (epoch == 0) or (epoch == N_epochs-1):
-                        print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}')
-                        t0 = t1
-                        
-                    model.losses_train.append((float(epoch), float(loss_train_val)))
-      
-                    
-            test_losses_per_batch = []
-            for test_batch in train_test_indicies['test']:   
-                input_test = f_load(test_batch)
-                out_test = model(input_test)
-                loss_test = criterion(out_test, input_test)          
-                test_losses_per_batch.append(loss_test.item())
-            loss_test_val = np.average(test_losses_per_batch)
-            model.losses_test.append((float(epoch), float(loss_test_val)))
-            print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
-
-        return model
 
 
     def autoencoder_sweep(self, X_or_Y, N_trial_dims, N_epochs, N_layers_autoencoder):
@@ -346,10 +209,10 @@ class NeuralNetworkTimeSeries():
         
         if X_or_Y == 'X':
             f_normalize = lambda data: self._normalize(data, 'X', 'normalize')
-            f_load = lambda indicies: f_normalize(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['X'])
+            f_load = lambda indicies: f_normalize(self._load_data_from_disk(indicies, 'fn_raw_data')['X'])
         elif X_or_Y == 'Y':
             f_normalize = lambda data: self._normalize(data, 'Y', 'normalize')
-            f_load = lambda indicies: f_normalize(NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)['Y'])
+            f_load = lambda indicies: f_normalize(self._load_data_from_disk(indicies, 'fn_raw_data')['Y'])
         else:
             raise(Exception('must be X or Y'))
         
@@ -391,11 +254,11 @@ class NeuralNetworkTimeSeries():
         print(f' * reducing outputs to {Ny} dimensions')
 
         for idx in range(len(df_loadcases)):
-            encoded_dataX = f_normalizeX(NeuralNetworkTimeSeries.load_data_from_disk(df_loadcases, [idx,], 'fn_raw_data', self.device)['X'])
+            encoded_dataX = f_normalizeX(self._load_data_from_disk([idx,], 'fn_raw_data')['X'])
             encoded_dataX = modelX.encoder(encoded_dataX)
             encoded_dataX = encoded_dataX[0, :, :]
             
-            encoded_dataY = f_normalizeY(NeuralNetworkTimeSeries.load_data_from_disk(df_loadcases, [idx,], 'fn_raw_data', self.device)['Y'])
+            encoded_dataY = f_normalizeY(self._load_data_from_disk([idx,], 'fn_raw_data')['Y'])
             encoded_dataY = modelY.encoder(encoded_dataY)
             encoded_dataY = encoded_dataY[0, :, :]          
             
@@ -415,7 +278,7 @@ class NeuralNetworkTimeSeries():
         print_header('train timeseries model')
 
         indicies = [0, ]
-        f_load = lambda indicies: NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_encoded_data', self.device)
+        f_load = lambda indicies: self._load_data_from_disk(indicies, 'fn_encoded_data')
         data = f_load(indicies)
         
         N_inputs = data['X'].shape[-1]
@@ -492,10 +355,276 @@ class NeuralNetworkTimeSeries():
         model.plot_losses(self.folders['plots_losses_dir'])
 
         self.model = model
+        
     
     
+    def assess_fit(self, plot = True, plot_normalized = True):
+        
+        print_header('assess fit on training data')
     
-    def _error_plot(U, Y_actual, Y_predicted, name, output_folder = '.'):
+        test_indicies = np.concatenate(self.train_test_indicies['test'])
+
+        df_loadcases = self.df_loadcases
+
+        for idx in test_indicies:
+            f_load = lambda indicies: self._load_data_from_disk(indicies, 'fn_raw_data')
+            data = f_load([idx,])
+            X = data['X']
+            Y_actual = data['Y']
+            Y_pred = self.predict(X)
+            name = df_loadcases['name'].iloc[idx]
+            
+            fx = lambda data: self._normalize(data, 'X', 'normalize')
+            fy = lambda data: self._normalize(data, 'Y', 'normalize')
+        
+            if plot_normalized == True and plot == True:
+                NeuralNetworkTimeSeries._plot_error_signals(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
+            elif plot == True:
+                NeuralNetworkTimeSeries._plot_error_signals(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
+            else:
+                print(' * no plots generated because plot = False')
+    
+    
+    def predict(self, X):
+        if type(X) == np.ndarray:
+            X = torch.from_numpy(X).float().to(self.device)
+            
+        X = self._normalize(X, 'X', 'normalize')
+        X = self.autoencoderX.encoder(X)
+        X, _ = self.model(X)  # this is really Y as output, but reassigning to save memory
+        X = self.autoencoderY.decoder(X)
+        X = self._normalize(X, 'Y', 'unnormalize')
+        
+        return X     
+    
+        
+    
+    
+    def save_model(self):
+        print_header('save model')
+        fn = os.path.join(self.folders['models_dir'], 'all_models.pkl')
+        with open(fn, 'wb') as h:
+            pickle.dump(self, h, pickle.HIGHEST_PROTOCOL)
+        print(f' * saved model to {fn}')
+        
+    def wrapup(self):
+        print_header('done')
+       
+    def _make_directory_system(self):
+        
+        working_dir = self.working_dir
+        dirs = {}
+        dirs['data_raw_dir'] = os.path.join(working_dir, 'data', 'raw_data')
+        dirs['data_encoded_dir'] = os.path.join(working_dir, 'data', 'encoded_data')
+        dirs['plots_losses_dir'] = os.path.join(working_dir, 'plots', 'losses')
+        dirs['plots_signals_dir'] = os.path.join(working_dir, 'plots', 'signal_predictions')
+        dirs['models_dir'] = os.path.join(working_dir, 'models')
+
+        for path in dirs.values():
+            os.makedirs(path, exist_ok = True)
+        self.folders = dirs
+        
+    
+    def _normalize(self, data, X_or_Y, normalize_or_unnormalize):
+        
+        if X_or_Y == 'X':
+            min_vals = self.normalization_data['input_min_vals'].reshape(1, 1, -1)
+            max_vals = self.normalization_data['input_max_vals'].reshape(1, 1, -1)
+        elif X_or_Y == 'Y':
+            min_vals = self.normalization_data['output_min_vals'].reshape(1, 1, -1)
+            max_vals = self.normalization_data['output_max_vals'].reshape(1, 1, -1)
+        else: 
+            raise Exception('must be X or Y')
+        
+        if type(min_vals) == np.ndarray:
+            min_vals = torch.from_numpy(min_vals).float().to(self.device)
+        if type(max_vals) == np.ndarray:
+            max_vals = torch.from_numpy(max_vals).float().to(self.device)      
+        
+        # # -1 to 1 normalization and reverse normalization
+        # if normalize_or_unnormalize == 'normalize':
+        #     transformed_data = 2*(data-min_vals)/(max_vals-min_vals) - 1
+        # elif normalize_or_unnormalize == 'unnormalize':
+        #     transformed_data = (data + 1)*(max_vals-min_vals)/2 + min_vals
+        # else:
+        #     raise Exception('must be normalize or unnormalize')
+        
+        # 0 to 1 normalization and reverse normalization
+        if normalize_or_unnormalize == 'normalize':
+            transformed_data = (data-min_vals)/(max_vals-min_vals)
+        elif normalize_or_unnormalize == 'unnormalize':
+            transformed_data = data*(max_vals-min_vals) + min_vals
+        else:
+            raise Exception('must be normalize or unnormalize')
+        
+        
+        return transformed_data
+    
+
+    def _dict_print(d, name = ''):
+        print('\n')
+        print(name)
+        for key, val in d.items():
+            try:
+                print(f' * {key}: {val.shape}')
+            except:
+                print(f' * {key}: {val}')
+   
+
+
+    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .01,  verbose = True, gradiant_clip = True):
+        
+        
+        input_train = f_load(train_test_indicies['train'][0])    
+        
+        N_features = input_train.shape[-1]       
+        model = AutoEncoder(input_dim = N_features, compressed_dim = compressed_dim, n_layers = N_layers_autoencoder)
+        criterion = nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
+        model.to(device)
+        model.train()      
+        
+        t0 = time.perf_counter()
+        
+        
+        N_times_through_batches = 5  # time
+        N_batches = len(train_test_indicies['train'])
+        N_loadcases_per_batch = np.average([len(x) for x in train_test_indicies['train']])
+                
+        epoch = 0
+        total_loadcases_trained_on = 0
+        
+        for j in range(N_times_through_batches):        
+            
+            for train_batch in train_test_indicies['train']:
+                
+                input_train = f_load(train_batch)
+            
+                n_lim = np.ceil(N_epochs * N_loadcases/(N_times_through_batches * N_batches * N_loadcases_per_batch)).astype(int)
+                for n in range(n_lim):
+                    optimizer.zero_grad()
+                    
+                    out_train = model(input_train)
+                    loss_train = criterion(out_train, input_train) 
+                    loss_train.backward(retain_graph=True)
+                    loss_train_val = loss_train.item()
+                    
+                                        
+                    if gradiant_clip == True:
+                        nn.utils.clip_grad_value_(model.parameters(), clip_value=.01)
+                    
+                    
+                    optimizer.step()  
+                    
+                    total_loadcases_trained_on += input_train.shape[0]
+                                
+                    t1 = time.perf_counter()
+                    dt = t1-t0
+                    
+                    loss_test_val = 0
+                    
+                    epoch = total_loadcases_trained_on/N_loadcases
+
+                    if (dt>=1.0 and verbose) or (epoch == 0) or (epoch == N_epochs-1):
+                        print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}')
+                        t0 = t1
+                        
+                    model.losses_train.append((float(epoch), float(loss_train_val)))
+      
+                    
+            test_losses_per_batch = []
+            for test_batch in train_test_indicies['test']:   
+                input_test = f_load(test_batch)
+                out_test = model(input_test)
+                loss_test = criterion(out_test, input_test)          
+                test_losses_per_batch.append(loss_test.item())
+            loss_test_val = np.average(test_losses_per_batch)
+            model.losses_test.append((float(epoch), float(loss_test_val)))
+            print(f'      * epoch {epoch: >6}: train loss = {loss_train_val : .4e}, test loss = {loss_test_val : .4e}')
+
+        return model
+ 
+    
+    
+    def _load_data_from_disk(self, indicies, col):
+        
+        device = self.device
+        files = self.df_loadcases.loc[:, col].iloc[indicies].to_list()
+        files = tuple(files)  # lists are not hashable for lru cache
+      
+        @lru_cache(maxsize = 2)
+        def load_data(device, files, col):
+            inputs = []
+            outputs = []
+            
+            for file in files:
+                (X, Y) = torch.load(file)
+                inputs.append(X)
+                outputs.append(Y)
+            return inputs, outputs
+        
+        inputs, outputs = load_data(device, files, col)
+            
+        inputs = torch.stack(inputs).to(device)
+        outputs = torch.stack(outputs).to(device)
+        
+        return {'X':inputs, 'Y':outputs}
+        
+            
+        
+        
+    
+ 
+    
+    def _train_test_split_with_batches(batch_size, test_frac, N_loadcases):
+
+        N_test = np.ceil(N_loadcases*test_frac).astype(int)
+        idx = list(range(N_loadcases))
+        idx_test = idx[:N_test]
+        idx_train = idx[N_test:]
+        idx_test_batches = [idx_test[x:x+batch_size] for x in range(0, len(idx_test), batch_size)]
+        idx_train_batches = [idx_train[x:x+batch_size] for x in range(0, len(idx_train), batch_size)]
+        
+        batches = {}
+        batches['train'] = idx_train_batches
+        batches['test'] = idx_test_batches
+        #print(batches)
+        
+        print(f' * train ({100-100*test_frac:.0f}%): {len(idx_train)} loadcases, {len(idx_train_batches)} batches, up to {batch_size} loadcases/batch')
+        print(f' * test ({100*test_frac:.0f}%): {len(idx_test)} loadcases, {len(idx_test_batches)} batches, up to {batch_size} loadcases/batch')
+
+        return batches
+    
+
+    def _plot_autoencoder_sweep_loss(autoencoders, varname = '', output_folder = '.'):
+    
+        fig, ax = plt.subplots()
+        fig.set_dpi(200)
+        for key, data in autoencoders.items():
+            
+            epoch = [x[0] for x in autoencoders[key].losses_test]
+            loss = [x[1] for x in autoencoders[key].losses_test]
+            h = ax.plot(epoch, loss, label = f'test, {key} dimensions')
+            
+            epoch = [x[0] for x in autoencoders[key].losses_train]
+            loss = [x[1] for x in autoencoders[key].losses_train]
+            ax.plot(epoch, loss, linestyle = '--', label = f'train, {key} dimensions', color = h[0].get_color())
+            
+            ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
+            ax.set_yscale('log')
+            ax.set_xlabel ('epoch')
+            ax.set_ylabel ('loss')
+            ax.set_title (f'{varname} autoencoder losses')    
+            ax.grid(c = [.9, .9, .9])
+            ax.set_axisbelow(True)
+        
+        fig.tight_layout()
+        fn = os.path.join(output_folder, f'losses_autoencoder_{varname}.pdf')
+        fig.savefig(fn)
+        print(f' * saved {fn}')
+
+
+    def _plot_error_signals(U, Y_actual, Y_predicted, name, output_folder = '.'):
         
         error = Y_actual-Y_predicted
         
@@ -525,142 +654,7 @@ class NeuralNetworkTimeSeries():
         print(f' * saved {fn}')
     
         return None
-        
-   
-    def load_data_from_disk(df_loadcases, indicies, col, device):
-        
-        files = df_loadcases.loc[:, col].iloc[indicies].to_list()
-        
-        inputs = []
-        outputs = []
-        
-        for file in files:
-            (X, Y) = torch.load(file)
-            inputs.append(X)
-            outputs.append(Y)
             
-        inputs = torch.stack(inputs).to(device)
-        outputs = torch.stack(outputs).to(device)
-        
-        return {'X':inputs, 'Y':outputs}
-        
-            
-        
-        
-    
-   
-    def assess_fit(self, plot = True, plot_normalized = True):
-        
-        print_header('assess fit on training data')
-    
-        test_indicies = np.concatenate(self.train_test_indicies['test'])
-
-        df_loadcases = self.df_loadcases
-
-        for idx in test_indicies:
-            f_load = lambda indicies: NeuralNetworkTimeSeries.load_data_from_disk(self.df_loadcases, indicies, 'fn_raw_data', self.device)
-            data = f_load([idx,])
-            X = data['X']
-            Y_actual = data['Y']
-            Y_pred = self.predict(X)
-            name = df_loadcases['name'].iloc[idx]
-            
-            fx = lambda data: self._normalize(data, 'X', 'normalize')
-            fy = lambda data: self._normalize(data, 'Y', 'normalize')
-        
-            if plot_normalized == True and plot == True:
-                NeuralNetworkTimeSeries._error_plot(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
-            elif plot == True:
-                NeuralNetworkTimeSeries._error_plot(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
-            else:
-                print(' * no plots generated because plot = False')
-    
-    
-    def predict(self, X):
-        if type(X) == np.ndarray:
-            X = torch.from_numpy(X).float().to(self.device)
-            
-        X = self._normalize(X, 'X', 'normalize')
-        X = self.autoencoderX.encoder(X)
-        X, _ = self.model(X)  # this is really Y as output, but reassigning to save memory
-        X = self.autoencoderY.decoder(X)
-        X = self._normalize(X, 'Y', 'unnormalize')
-        
-        return X     
-    
-    
-    def  train_test_split(self, test_frac, batch_size):
-        
-         print_header('train test split with batches')
-        
-         N_loadcases = len(self.df_loadcases)
-        
-         train_test_indicies  = NeuralNetworkTimeSeries._train_test_split_with_batches(batch_size, test_frac, N_loadcases)
-         
-         self.train_test_indicies = train_test_indicies
-         
-    
-    def _train_test_split_with_batches(batch_size, test_frac, N_loadcases):
-
-        N_test = np.ceil(N_loadcases*test_frac).astype(int)
-        idx = list(range(N_loadcases))
-        idx_test = idx[:N_test]
-        idx_train = idx[N_test:]
-        idx_test_batches = [idx_test[x:x+batch_size] for x in range(0, len(idx_test), batch_size)]
-        idx_train_batches = [idx_train[x:x+batch_size] for x in range(0, len(idx_train), batch_size)]
-        
-        batches = {}
-        batches['train'] = idx_train_batches
-        batches['test'] = idx_test_batches
-        #print(batches)
-        
-        print(f' * train ({100-100*test_frac:.0f}%): {len(idx_train)} loadcases, {len(idx_train_batches)} batches, up to {batch_size} loadcases/batch')
-        print(f' * test ({100*test_frac:.0f}%): {len(idx_test)} loadcases, {len(idx_test_batches)} batches, up to {batch_size} loadcases/batch')
-
-        return batches
-    
-
-    def save_model(self):
-        print_header('save model')
-        fn = os.path.join(self.folders['models_dir'], 'all_models.pkl')
-        with open(fn, 'wb') as h:
-            pickle.dump(self, h, pickle.HIGHEST_PROTOCOL)
-        print(f' * saved model to {fn}')
-        
-    def wrapup(self):
-        
-        
-        
-        
-        print_header('done')
-
-    def _plot_autoencoder_sweep_loss(autoencoders, varname = '', output_folder = '.'):
-    
-        fig, ax = plt.subplots()
-        fig.set_dpi(200)
-        for key, data in autoencoders.items():
-            
-            epoch = [x[0] for x in autoencoders[key].losses_test]
-            loss = [x[1] for x in autoencoders[key].losses_test]
-            h = ax.plot(epoch, loss, label = f'test, {key} dimensions')
-            
-            epoch = [x[0] for x in autoencoders[key].losses_train]
-            loss = [x[1] for x in autoencoders[key].losses_train]
-            ax.plot(epoch, loss, linestyle = '--', label = f'train, {key} dimensions', color = h[0].get_color())
-            
-            ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
-            ax.set_yscale('log')
-            ax.set_xlabel ('epoch')
-            ax.set_ylabel ('loss')
-            ax.set_title (f'{varname} autoencoder losses')    
-            ax.grid(c = [.9, .9, .9])
-            ax.set_axisbelow(True)
-        
-        fig.tight_layout()
-        fn = os.path.join(output_folder, f'losses_autoencoder_{varname}.pdf')
-        fig.savefig(fn)
-        print(f' * saved {fn}')
-    
     
 class GRUNet(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, n_layers, device, drop_prob=0.2):
