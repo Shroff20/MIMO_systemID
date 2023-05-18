@@ -617,14 +617,16 @@ class NeuralNetworkTimeSeries():
         fig, ax = plt.subplots()
         fig.set_dpi(200)
         for key, data in autoencoders.items():
-            
-            epoch = [x[0] for x in autoencoders[key].losses_test]
-            loss = [x[1] for x in autoencoders[key].losses_test]
-            h = ax.plot(epoch, loss, label = f'test, {key} dimensions')
-            
+ 
             epoch = [x[0] for x in autoencoders[key].losses_train]
             loss = [x[1] for x in autoencoders[key].losses_train]
-            ax.plot(epoch, loss, linestyle = '--', label = f'train, {key} dimensions', color = h[0].get_color())
+            h = ax.plot(epoch, loss,  label = f'train, {key} dimensions')
+            
+                       
+            epoch = [x[0] for x in autoencoders[key].losses_test]
+            loss = [x[1] for x in autoencoders[key].losses_test]
+            ax.plot(epoch, loss, label = f'test, {key} dimensions', marker = 'o', linestyle = '--', markersize = 5,  markeredgecolor = 'k', color = h[0].get_color())
+            
             
             ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
             ax.set_yscale('log')
@@ -649,8 +651,8 @@ class NeuralNetworkTimeSeries():
         ax[0].plot(U[0, :, :].cpu().detach().numpy())
         ax[0].set_title(f'inputs ({U.shape[-1]})')
         
-        ax[1].plot(Y_actual[0, :, :].cpu().detach().numpy())
-        ax[1].plot(Y_predicted[0, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
+        ax[1].plot(Y_actual[0, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
+        ax[1].plot(Y_predicted[0, :, :].cpu().detach().numpy())
         ax[1].set_title(f'outputs ({Y_predicted.shape[-1]})')
         
         ax[2].plot(error[0, :, :].cpu().detach().numpy())
@@ -716,7 +718,7 @@ class GRUNet(nn.Module):
         
         epoch = [x[0] for x in self.losses_test]
         loss = [x[1] for x in self.losses_test]
-        ax.plot(epoch, loss, label = 'test loss')    
+        ax.plot(epoch, loss, label = 'test loss', marker = 'o', linestyle = '--', markersize = 5,  markeredgecolor = 'k',)    
         
         ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")       
         ax.set_xlabel('epoch')
@@ -785,7 +787,7 @@ class AutoEncoder(nn.Module):
         fig, ax = plt.subplots()
         fig.set_dpi(200)       
         ax.plot(losses_train, label = 'train loss')
-        ax.plot(losses_test, label = 'test loss')
+        ax.plot(losses_test, label = 'test loss', marker = 'o', linestyle = '--', markersize = 5,  markeredgecolor = 'k',)
         ax.legend()
         ax.set_xlabel('epoch')
         ax.set_ylabel('loss')

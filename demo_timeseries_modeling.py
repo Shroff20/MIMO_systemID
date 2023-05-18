@@ -16,12 +16,12 @@ batch_size = 10                                  # will load up to this many loa
 test_frac = .3                                  # fraction of data to use for testing
 
 # input autoencoder
-N_epochs_autoencoderX = 50                      # epochs to train autoencoder
+N_epochs_autoencoderX = 50                     # epochs to train autoencoder
 trial_dims_autoencoderX = [1, N_inputs]         # list of compressed dimensions to try
 N_layers_autoencoderX = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 
 # output autoencoder
-N_epochs_autoencoderY = 100                   # epochs to train autoencoder
+N_epochs_autoencoderY = 10                   # epochs to train autoencoder
 trial_dims_autoencoderY = [1, N_outputs]        # list of compressed dimensions to try
 N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 
