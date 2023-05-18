@@ -7,6 +7,7 @@ Created on Mon May  8 20:02:36 2023
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
 import torch 
 import scipy.signal as signal
 import torch.nn as nn
@@ -85,7 +86,7 @@ class FakeDataMaker():
                     Y[p, :, i] += dY
         
         np.random.seed(0)
-        Y_offset = np.random.rand(5)[None, None, :]-.5
+        Y_offset = np.random.rand(N_outputs)[None, None, :]-.5
         Y = Y + Y_offset        
         
         
@@ -364,9 +365,20 @@ class NeuralNetworkTimeSeries():
     
         test_indicies = np.concatenate(self.train_test_indicies['test'])
 
+        #TODO
+        
+        print(' * NOT IMPLEMENTED YET')
+    
+    
+    def plot_predictions(self, plot_normalized = True):
+        
+        print_header('plotting predictions')
+    
+        #test_indicies = np.concatenate(self.train_test_indicies['test'])
+
         df_loadcases = self.df_loadcases
 
-        for idx in test_indicies:
+        for idx in range(len(df_loadcases)):
             f_load = lambda indicies: self._load_data_from_disk(indicies, 'fn_raw_data')
             data = f_load([idx,])
             X = data['X']
@@ -377,12 +389,11 @@ class NeuralNetworkTimeSeries():
             fx = lambda data: self._normalize(data, 'X', 'normalize')
             fy = lambda data: self._normalize(data, 'Y', 'normalize')
         
-            if plot_normalized == True and plot == True:
+            if plot_normalized == True:
                 NeuralNetworkTimeSeries._plot_error_signals(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
-            elif plot == True:
-                NeuralNetworkTimeSeries._plot_error_signals(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
             else:
-                print(' * no plots generated because plot = False')
+                NeuralNetworkTimeSeries._plot_error_signals(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
+
     
     
     def predict(self, X):
@@ -545,7 +556,6 @@ class NeuralNetworkTimeSeries():
         return model
  
     
-    
     def _load_data_from_disk(self, indicies, col):
         
         device = self.device
@@ -561,14 +571,20 @@ class NeuralNetworkTimeSeries():
                 (X, Y) = torch.load(file)
                 inputs.append(X)
                 outputs.append(Y)
-            return inputs, outputs
-        
-        inputs, outputs = load_data(device, files, col)
+                
+            inputs = torch.stack(inputs).to(device)
+            outputs = torch.stack(outputs).to(device) 
             
-        inputs = torch.stack(inputs).to(device)
-        outputs = torch.stack(outputs).to(device)
+            data =  {'X':inputs, 'Y':outputs}
+            
+            return data
         
-        return {'X':inputs, 'Y':outputs}
+        data = load_data(device, files, col)
+            
+        # inputs = torch.stack(inputs).to(device)
+        # outputs = torch.stack(outputs).to(device)
+        
+        return data
         
             
         
@@ -650,6 +666,8 @@ class NeuralNetworkTimeSeries():
         
         fn = os.path.join(output_folder, f'{name}.pdf')
         fig.savefig(fn)
+        
+        plt.close(fig)
         
         print(f' * saved {fn}')
     

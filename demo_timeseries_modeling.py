@@ -8,7 +8,7 @@ working_dir = 'demo_output\\' # will store all model data
 
 # fake dataset creation
 N_inputs = 3                                    # number of input features
-N_outputs = 5                                   # number of output features
+N_outputs = 20                                   # number of output features
 N_loadcases = 20                                # number of cases (runs)
 
 # training options
@@ -54,6 +54,7 @@ NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencode
 NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN) # trains timeseries model
 NNTS.save_model() # save model to pkl file
 NNTS.assess_fit() # assses fit of the final model
+NNTS.plot_predictions() # assses fit of the final model
 NNTS.wrapup() # wrap up study
 
 #%%
