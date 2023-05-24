@@ -16,6 +16,10 @@ import pandas as pd
 import pickle
 from functools import lru_cache
 import os
+
+import matplotlib.style as mplstyle
+mplstyle.use('fast')  # simplier plots for faster plotting
+
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"  # fix install to be able to remove this
 os.environ['CUDA_VISIBLE_DEVICES'] ='0'
 
@@ -408,8 +412,75 @@ class NeuralNetworkTimeSeries():
         
         return X     
     
-        
     
+    def plot_detailed_predictions(self):
+        
+        print_header('plotting detailed prediction pipeline')
+        df_loadcases = self.df_loadcases
+        
+        output_folder = self.folders['plots_debug_dir']
+        
+        for idx in range(len(df_loadcases)):
+            name = df_loadcases['name'].iloc[idx]
+            f_load = lambda indicies: self._load_data_from_disk(indicies, 'fn_raw_data')
+            data = f_load([idx,])
+            X_raw = data['X']
+            Y_raw = data['Y']  
+     
+            X_normalized = self._normalize(X_raw, 'X', 'normalize')
+            Y_normalized = self._normalize(Y_raw, 'Y', 'normalize')
+            
+            X_encoded = self.autoencoderX.encoder(X_normalized)
+            Y_encoded = self.autoencoderY.encoder(Y_normalized)
+            
+            X_normalized_reconstructed = self.autoencoderX.decoder(X_encoded)
+            Y_normalized_reconstructed = self.autoencoderY.decoder(Y_encoded)
+
+            
+            Y_encoded_predicted, _ = self.model(X_encoded) 
+            Y_normalized_predicted = self.autoencoderY.decoder(Y_encoded_predicted)
+            Y_raw_predicted = self._normalize(Y_normalized_predicted, 'Y', 'unnormalize')
+            
+            X_encoding_error = X_normalized - X_normalized_reconstructed
+            Y_encoding_error = Y_normalized - Y_normalized_reconstructed
+            
+            Y_prediction_error = Y_normalized_predicted - Y_normalized
+            
+            def _prep(x):
+                return x[0, :, :].cpu().detach().numpy()
+            
+            fig, ax = plt.subplots(6, 1)
+            
+            fig.set_size_inches((8, 20))
+            
+            ax[0].plot(_prep(X_normalized))
+            ax[0].set_title('X normalized')
+            
+            ax[1].plot(_prep(X_encoded))
+            ax[1].set_title('X encoded')
+            
+            ax[2].plot(_prep(X_encoding_error))
+            ax[2].set_title('X encoding error')
+            
+            ax[3].plot(_prep(Y_encoded_predicted))
+            ax[3].set_title('Y_encoded_predicted')
+             
+            ax[4].plot(_prep(Y_encoding_error))
+            ax[4].set_title('Y_encoding_error')
+            
+            ax[5].plot(_prep(Y_prediction_error))
+            ax[5].set_title('Y_prediction_error')           
+                      
+            fig.suptitle(f'{name}')
+            fig.tight_layout()
+            
+            fn = os.path.join(output_folder, f'{name}.pdf')
+            fig.savefig(fn)
+            
+            plt.close(fig)
+            
+            print(f' * saved {fn}')
+            
     
     def save_model(self):
         print_header('save model')
@@ -429,6 +500,7 @@ class NeuralNetworkTimeSeries():
         dirs['data_encoded_dir'] = os.path.join(working_dir, 'data', 'encoded_data')
         dirs['plots_losses_dir'] = os.path.join(working_dir, 'plots', 'losses')
         dirs['plots_signals_dir'] = os.path.join(working_dir, 'plots', 'signal_predictions')
+        dirs['plots_debug_dir'] = os.path.join(working_dir, 'plots', 'debug')
         dirs['models_dir'] = os.path.join(working_dir, 'models')
 
         for path in dirs.values():
@@ -640,6 +712,17 @@ class NeuralNetworkTimeSeries():
         fn = os.path.join(output_folder, f'losses_autoencoder_{varname}.pdf')
         fig.savefig(fn)
         print(f' * saved {fn}')
+
+
+    def _plot_detailed_predictions(idx, output_folder = '.'):
+        
+        
+        
+        
+        
+        
+        return None
+
 
 
     def _plot_error_signals(U, Y_actual, Y_predicted, name, output_folder = '.'):
