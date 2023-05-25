@@ -365,13 +365,36 @@ class NeuralNetworkTimeSeries():
     
     def assess_fit(self, plot = True, plot_normalized = True):
         
-        print_header('assess fit on training data')
+        print_header('assess fit')
     
-        test_indicies = np.concatenate(self.train_test_indicies['test'])
-
-        #TODO
+        df_loadcases = self.df_loadcases
         
-        print(' * NOT IMPLEMENTED YET')
+        output_folder = self.folders['plots_losses_dir']
+        
+        for idx in range(len(df_loadcases)):
+            name = df_loadcases['name'].iloc[idx]
+            f_load = lambda indicies: self._load_data_from_disk(indicies, 'fn_raw_data')
+            data = f_load([idx,])
+            X_raw = data['X']
+            Y_raw = data['Y']  
+     
+            results =  self._get_all_pipeline_intermediate_results(X_raw, Y_raw)   
+    
+            def _prep(x):
+                return x[0, :, :].cpu().detach().numpy()
+            
+            e_mean_abs = torch.mean(torch.abs(results['Y_normalized_prediction_error'])).cpu().detach().numpy()
+            e_max_abs = torch.max(torch.abs(results['Y_normalized_prediction_error'])).cpu().detach().numpy()
+
+            print(f' * {name}: max error = {e_max_abs:.3e}, mean error = {e_mean_abs:.3e}')
+            
+            self.df_loadcases.loc[name, 'error_max'] = e_max_abs
+            self.df_loadcases.loc[name, 'error_mean'] = e_mean_abs
+        
+        fn = os.path.join(output_folder, 'error_by_loadcase.csv')
+        self.df_loadcases.to_csv(fn)
+        print(f' * saved {fn}')
+
     
     
     def plot_predictions(self, plot_normalized = True):
@@ -432,7 +455,7 @@ class NeuralNetworkTimeSeries():
         X_encoding_error = X_normalized - X_normalized_encoded_decoded
         Y_encoding_error = Y_normalized - Y_normalized_encoded_decoded
         
-        Y_prediction_error = Y_normalized_predicted - Y_normalized
+        Y_normalized_prediction_error = Y_normalized_predicted - Y_normalized
         
         results = {}
         results['X_raw'] = X_raw
@@ -448,7 +471,7 @@ class NeuralNetworkTimeSeries():
         results['Y_raw_predicted'] = Y_raw_predicted
         results['X_encoding_error'] = X_encoding_error
         results['Y_encoding_error'] = Y_encoding_error
-        results['Y_prediction_error'] = Y_prediction_error
+        results['Y_normalized_prediction_error'] = Y_normalized_prediction_error
         
         return results 
     
@@ -476,7 +499,7 @@ class NeuralNetworkTimeSeries():
             fig, ax = plt.subplots(8, 1)
             fig.set_size_inches((8, 20))
             
-            ax[0].hist(_prep(results['Y_prediction_error']).flatten())
+            ax[0].hist(_prep(results['Y_normalized_prediction_error']).flatten())
             ax[0].set_title('normalized output error histogram')
             
             
@@ -500,8 +523,8 @@ class NeuralNetworkTimeSeries():
             ax[6].plot(_prep(results['Y_normalized']), color = 'k', linestyle = '--', label = 'actual')
             ax[6].set_title('normalized output (actual and predicted)')           
                       
-            ax[7].plot(_prep(results['Y_prediction_error']))
-            ax[7].set_title('output prediction error (predicted - actual)')   
+            ax[7].plot(_prep(results['Y_normalized_prediction_error']))
+            ax[7].set_title('normalized output prediction error (predicted - actual)')   
             
             fig.suptitle(f'{name}')
             fig.tight_layout(pad = 2)

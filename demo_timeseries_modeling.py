@@ -22,7 +22,7 @@ N_layers_autoencoderX = 1                       # autoencoder layers (start with
 learn_rate_autoencoderX = .01
 
 # output autoencoder
-N_epochs_autoencoderY = 100                   # epochs to train autoencoder
+N_epochs_autoencoderY = 500                  # epochs to train autoencoder
 trial_dims_autoencoderY = [1, N_outputs]        # list of compressed dimensions to try
 N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 learn_rate_autoencoderY = .01
