@@ -394,6 +394,19 @@ class NeuralNetworkTimeSeries():
         fn = os.path.join(output_folder, 'error_by_loadcase.csv')
         self.df_loadcases.to_csv(fn)
         print(f' * saved {fn}')
+        
+        
+        fig, ax = plt.subplots(2, 1)
+        ax[0].hist(self.df_loadcases['error_mean'])
+        ax[0].set_title('mean normalized error per loadcase')
+        ax[1].hist(self.df_loadcases['error_max'])
+        ax[1].set_title('max normalized error per loadcase')        
+        fig.tight_layout(pad = 1)
+        fn = os.path.join(output_folder, 'error_by_loadcase.pdf')
+        fig.savefig(fn)
+        print(f' * saved {fn}')
+
+
 
     
     
