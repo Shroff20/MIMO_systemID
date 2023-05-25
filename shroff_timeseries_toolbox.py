@@ -449,30 +449,42 @@ class NeuralNetworkTimeSeries():
             def _prep(x):
                 return x[0, :, :].cpu().detach().numpy()
             
-            fig, ax = plt.subplots(6, 1)
+            fig, ax = plt.subplots(8, 1)
             
             fig.set_size_inches((8, 20))
             
-            ax[0].plot(_prep(X_normalized))
-            ax[0].set_title('X normalized')
+            ax[0].hist(_prep(Y_prediction_error).flatten())
+            ax[0].set_title('normalized output error histogram')
             
-            ax[1].plot(_prep(X_encoded))
-            ax[1].set_title('X encoded')
             
-            ax[2].plot(_prep(X_encoding_error))
-            ax[2].set_title('X encoding error')
+            ax[1].plot(_prep(X_normalized))
+            ax[1].set_title('normalized input')
             
-            ax[3].plot(_prep(Y_encoded_predicted))
-            ax[3].set_title('Y_encoded_predicted')
-             
+            ax[2].plot(_prep(X_encoded))
+            ax[2].set_title('encoded input')
+            
+            ax[3].plot(_prep(X_encoding_error))
+            ax[3].set_title('input encoding error (actual - predicted)')
+            
             ax[4].plot(_prep(Y_encoding_error))
-            ax[4].set_title('Y_encoding_error')
+            ax[4].set_title('output encoding error (actual - predicted)')
             
-            ax[5].plot(_prep(Y_prediction_error))
-            ax[5].set_title('Y_prediction_error')           
+            ax[5].plot(_prep(Y_encoded_predicted))
+            ax[5].plot(_prep(Y_encoded), color = 'k', linestyle = '--', label = 'actual')
+            ax[5].set_title('encoded output (actual and predicted)')
+             
+            ax[6].plot(_prep(Y_normalized_predicted), label = 'predicted')
+            ax[6].plot(_prep(Y_normalized), color = 'k', linestyle = '--', label = 'actual')
+            ax[6].set_title('normalized output (actual and predicted)')           
                       
+            ax[7].plot(_prep(Y_prediction_error))
+            ax[7].set_title('output prediction error (predicted - actual)')   
+            
+            
+            
+            
             fig.suptitle(f'{name}')
-            fig.tight_layout()
+            fig.tight_layout(pad = 2)
             
             fn = os.path.join(output_folder, f'{name}.pdf')
             fig.savefig(fn)
