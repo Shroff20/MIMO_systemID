@@ -413,6 +413,47 @@ class NeuralNetworkTimeSeries():
         return X     
     
     
+    def _get_all_pipeline_intermediate_results(self, X_raw, Y_raw):
+        
+        X_normalized = self._normalize(X_raw, 'X', 'normalize')
+        Y_normalized = self._normalize(Y_raw, 'Y', 'normalize')
+        
+        X_encoded = self.autoencoderX.encoder(X_normalized)
+        Y_encoded = self.autoencoderY.encoder(Y_normalized)
+        
+        X_normalized_encoded_decoded = self.autoencoderX.decoder(X_encoded)
+        Y_normalized_encoded_decoded = self.autoencoderY.decoder(Y_encoded)
+
+        
+        Y_encoded_predicted, _ = self.model(X_encoded) 
+        Y_normalized_predicted = self.autoencoderY.decoder(Y_encoded_predicted)
+        Y_raw_predicted = self._normalize(Y_normalized_predicted, 'Y', 'unnormalize')
+        
+        X_encoding_error = X_normalized - X_normalized_encoded_decoded
+        Y_encoding_error = Y_normalized - Y_normalized_encoded_decoded
+        
+        Y_prediction_error = Y_normalized_predicted - Y_normalized
+        
+        results = {}
+        results['X_raw'] = X_raw
+        results['Y_raw'] = Y_raw
+        results['X_normalized'] = X_normalized
+        results['Y_normalized'] = Y_normalized
+        results['X_encoded'] = X_encoded
+        results['Y_encoded'] = Y_encoded
+        results['X_normalized_encoded_decoded'] = X_normalized_encoded_decoded
+        results['Y_normalized_encoded_decoded'] = Y_normalized_encoded_decoded
+        results['Y_encoded_predicted'] = Y_encoded_predicted
+        results['Y_normalized_predicted'] = Y_normalized_predicted
+        results['Y_raw_predicted'] = Y_raw_predicted
+        results['X_encoding_error'] = X_encoding_error
+        results['Y_encoding_error'] = Y_encoding_error
+        results['Y_prediction_error'] = Y_prediction_error
+        
+        return results 
+    
+    
+    
     def plot_detailed_predictions(self):
         
         print_header('plotting detailed prediction pipeline')
@@ -427,70 +468,46 @@ class NeuralNetworkTimeSeries():
             X_raw = data['X']
             Y_raw = data['Y']  
      
-            X_normalized = self._normalize(X_raw, 'X', 'normalize')
-            Y_normalized = self._normalize(Y_raw, 'Y', 'normalize')
-            
-            X_encoded = self.autoencoderX.encoder(X_normalized)
-            Y_encoded = self.autoencoderY.encoder(Y_normalized)
-            
-            X_normalized_reconstructed = self.autoencoderX.decoder(X_encoded)
-            Y_normalized_reconstructed = self.autoencoderY.decoder(Y_encoded)
-
-            
-            Y_encoded_predicted, _ = self.model(X_encoded) 
-            Y_normalized_predicted = self.autoencoderY.decoder(Y_encoded_predicted)
-            Y_raw_predicted = self._normalize(Y_normalized_predicted, 'Y', 'unnormalize')
-            
-            X_encoding_error = X_normalized - X_normalized_reconstructed
-            Y_encoding_error = Y_normalized - Y_normalized_reconstructed
-            
-            Y_prediction_error = Y_normalized_predicted - Y_normalized
-            
+            results =  self._get_all_pipeline_intermediate_results(X_raw, Y_raw)   
+    
             def _prep(x):
                 return x[0, :, :].cpu().detach().numpy()
             
             fig, ax = plt.subplots(8, 1)
-            
             fig.set_size_inches((8, 20))
             
-            ax[0].hist(_prep(Y_prediction_error).flatten())
+            ax[0].hist(_prep(results['Y_prediction_error']).flatten())
             ax[0].set_title('normalized output error histogram')
             
             
-            ax[1].plot(_prep(X_normalized))
+            ax[1].plot(_prep(results['X_normalized']))
             ax[1].set_title('normalized input')
             
-            ax[2].plot(_prep(X_encoded))
+            ax[2].plot(_prep(results['X_encoded']))
             ax[2].set_title('encoded input')
             
-            ax[3].plot(_prep(X_encoding_error))
+            ax[3].plot(_prep(results['X_encoding_error']))
             ax[3].set_title('input encoding error (actual - predicted)')
             
-            ax[4].plot(_prep(Y_encoding_error))
+            ax[4].plot(_prep(results['Y_encoding_error']))
             ax[4].set_title('output encoding error (actual - predicted)')
             
-            ax[5].plot(_prep(Y_encoded_predicted))
-            ax[5].plot(_prep(Y_encoded), color = 'k', linestyle = '--', label = 'actual')
+            ax[5].plot(_prep(results['Y_encoded_predicted']))
+            ax[5].plot(_prep(results['Y_encoded']), color = 'k', linestyle = '--', label = 'actual')
             ax[5].set_title('encoded output (actual and predicted)')
              
-            ax[6].plot(_prep(Y_normalized_predicted), label = 'predicted')
-            ax[6].plot(_prep(Y_normalized), color = 'k', linestyle = '--', label = 'actual')
+            ax[6].plot(_prep(results['Y_normalized_predicted']), label = 'predicted')
+            ax[6].plot(_prep(results['Y_normalized']), color = 'k', linestyle = '--', label = 'actual')
             ax[6].set_title('normalized output (actual and predicted)')           
                       
-            ax[7].plot(_prep(Y_prediction_error))
+            ax[7].plot(_prep(results['Y_prediction_error']))
             ax[7].set_title('output prediction error (predicted - actual)')   
-            
-            
-            
             
             fig.suptitle(f'{name}')
             fig.tight_layout(pad = 2)
-            
             fn = os.path.join(output_folder, f'{name}.pdf')
             fig.savefig(fn)
-            
             plt.close(fig)
-            
             print(f' * saved {fn}')
             
     
