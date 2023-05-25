@@ -16,24 +16,26 @@ batch_size = 10                                  # will load up to this many loa
 test_frac = .3                                  # fraction of data to use for testing
 
 # input autoencoder
-N_epochs_autoencoderX = 50                    # epochs to train autoencoder
+N_epochs_autoencoderX = 500                    # epochs to train autoencoder
 trial_dims_autoencoderX = [1, N_inputs]         # list of compressed dimensions to try
 N_layers_autoencoderX = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
+learn_rate_autoencoderX = .01
 
 # output autoencoder
-N_epochs_autoencoderY = 10                   # epochs to train autoencoder
+N_epochs_autoencoderY = 100                   # epochs to train autoencoder
 trial_dims_autoencoderY = [1, N_outputs]        # list of compressed dimensions to try
 N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
+learn_rate_autoencoderY = .01
 
 # autoencoder final choices
 N_dim_X_autoencoder = N_inputs                  # chosen number of dimensions to encode inputs
 N_dim_Y_autoencoder = N_outputs                 # chosen number of dimensions to encode outputs
 
 # timeseries model
-N_epochs_RNN = 100                              # epochs to train timeseries model (RNN)
+N_epochs_RNN = 1000                              # epochs to train timeseries model (RNN)
 N_layers_RNN = 1                                # RNN layers (start with 1, then increase if a more complicated model is needed)
 N_hidden_dim_RNN = 10                          # RNN memory length: increase to lengthen memory of past input values (should be at least time constant of the system)
-
+learn_rate_RNN = .01
 
 #%% PIPELINE
 
@@ -47,16 +49,15 @@ for i in range(inputs.shape[0]):
 
 NNTS.train_test_split(test_frac, batch_size) # splits into train and text batches
 
-NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX)  # trains autoencoders for the input of various dimensionality for review
-NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY) # trains autoencoders for the output of various dimensionality for review
+NNTS.autoencoder_sweep('X', trial_dims_autoencoderX, N_epochs_autoencoderX, N_layers_autoencoderX, learn_rate_autoencoderX)  # trains autoencoders for the input of various dimensionality for review
+NNTS.autoencoder_sweep('Y', trial_dims_autoencoderY, N_epochs_autoencoderY, N_layers_autoencoderY, learn_rate_autoencoderY) # trains autoencoders for the output of various dimensionality for review
 
 NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencoder) # normalizes data and compresses input and output based on chosen dimensionality
-NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN) # trains timeseries model
+NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_epochs_RNN, learn_rate_RNN) # trains timeseries model
 NNTS.save_model() # save model to pkl file
 NNTS.assess_fit() # assses fit of the final model
-NNTS.plot_detailed_predictions() # assses fit of the final model
-
-NNTS.plot_predictions() # assses fit of the final model
+NNTS.plot_detailed_predictions() # plot intermediate signals, including autoenencoder errors
+NNTS.plot_predictions() # plot normalized predictions
 NNTS.wrapup() # wrap up study
 
 #%%

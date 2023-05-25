@@ -206,7 +206,7 @@ class NeuralNetworkTimeSeries():
             
 
 
-    def autoencoder_sweep(self, X_or_Y, N_trial_dims, N_epochs, N_layers_autoencoder):
+    def autoencoder_sweep(self, X_or_Y, N_trial_dims, N_epochs, N_layers_autoencoder, learn_rate = .001):
         
         print_header(f'autoencoder sweep for {X_or_Y}')
         
@@ -223,7 +223,7 @@ class NeuralNetworkTimeSeries():
         
         for compressed_dim in N_trial_dims:
             print(f' * training autoencoder with {compressed_dim} compressed dimensions and {N_layers_autoencoder} layers for {N_epochs} epochs')
-            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(self.device,  self.train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases)           
+            autoencoder_model  = NeuralNetworkTimeSeries._train_autoencoder(self.device,  self.train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = learn_rate)           
 
             if X_or_Y == 'X':
                 self.autoencodersX[compressed_dim]  = autoencoder_model
@@ -278,7 +278,7 @@ class NeuralNetworkTimeSeries():
         
         
         
-    def train_timeseries_model(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .01, verbose = True, gradiant_clip = True):
+    def train_timeseries_model(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .001, verbose = True, gradiant_clip = True):
         
         print_header('train timeseries model')
 
@@ -327,7 +327,7 @@ class NeuralNetworkTimeSeries():
                     loss_train.backward(retain_graph=True)
                     
                     if gradiant_clip == True:
-                        nn.utils.clip_grad_value_(model.parameters(), clip_value=.01)
+                        nn.utils.clip_grad_value_(model.parameters(), clip_value=learn_rate)
                     
                     optimizer.step()  
                     loss_train_val = loss_train.item()
@@ -584,7 +584,7 @@ class NeuralNetworkTimeSeries():
    
 
 
-    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .01,  verbose = True, gradiant_clip = True):
+    def _train_autoencoder(device, train_test_indicies, f_load, compressed_dim, N_epochs, N_layers_autoencoder, N_loadcases, learn_rate = .001,  verbose = True, gradiant_clip = True):
         
         
         input_train = f_load(train_test_indicies['train'][0])    
@@ -623,7 +623,7 @@ class NeuralNetworkTimeSeries():
                     
                                         
                     if gradiant_clip == True:
-                        nn.utils.clip_grad_value_(model.parameters(), clip_value=.01)
+                        nn.utils.clip_grad_value_(model.parameters(), clip_value = learn_rate)
                     
                     
                     optimizer.step()  
