@@ -16,13 +16,13 @@ batch_size = 10                                  # will load up to this many loa
 test_frac = .3                                  # fraction of data to use for testing
 
 # input autoencoder
-N_epochs_autoencoderX = 500                    # epochs to train autoencoder
+N_epochs_autoencoderX = 50                    # epochs to train autoencoder
 trial_dims_autoencoderX = [1, N_inputs]         # list of compressed dimensions to try
 N_layers_autoencoderX = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 learn_rate_autoencoderX = .01
 
 # output autoencoder
-N_epochs_autoencoderY = 500                  # epochs to train autoencoder
+N_epochs_autoencoderY = 50                  # epochs to train autoencoder
 trial_dims_autoencoderY = [1, N_outputs]        # list of compressed dimensions to try
 N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 learn_rate_autoencoderY = .01
@@ -32,7 +32,7 @@ N_dim_X_autoencoder = N_inputs                  # chosen number of dimensions to
 N_dim_Y_autoencoder = N_outputs                 # chosen number of dimensions to encode outputs
 
 # timeseries model
-N_epochs_RNN = 1000                              # epochs to train timeseries model (RNN)
+N_epochs_RNN = 100                              # epochs to train timeseries model (RNN)
 N_layers_RNN = 1                                # RNN layers (start with 1, then increase if a more complicated model is needed)
 N_hidden_dim_RNN = 10                          # RNN memory length: increase to lengthen memory of past input values (should be at least time constant of the system)
 learn_rate_RNN = .01
