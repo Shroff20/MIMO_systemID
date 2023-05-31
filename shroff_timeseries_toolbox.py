@@ -410,7 +410,7 @@ class NeuralNetworkTimeSeries():
 
     
     
-    def plot_predictions(self, plot_normalized = True):
+    def plot_predictions(self, plot_normalized = True, N_lines_max = None):
         
         print_header('plotting predictions')
     
@@ -430,9 +430,9 @@ class NeuralNetworkTimeSeries():
             fy = lambda data: self._normalize(data, 'Y', 'normalize')
         
             if plot_normalized == True:
-                NeuralNetworkTimeSeries._plot_error_signals(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'])
+                NeuralNetworkTimeSeries._plot_error_signals(fx(X), fy(Y_actual), fy(Y_pred), name, output_folder = self.folders['plots_signals_dir'], N_lines_max = N_lines_max)
             else:
-                NeuralNetworkTimeSeries._plot_error_signals(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'])
+                NeuralNetworkTimeSeries._plot_error_signals(X, Y_actual, Y_pred, name, output_folder = self.folders['plots_signals_dir'], N_lines_max = N_lines_max)
 
     
     
@@ -490,7 +490,7 @@ class NeuralNetworkTimeSeries():
     
     
     
-    def plot_detailed_predictions(self):
+    def plot_detailed_predictions(self, N_lines_max = None):
         
         print_header('plotting detailed prediction pipeline')
         df_loadcases = self.df_loadcases
@@ -779,32 +779,32 @@ class NeuralNetworkTimeSeries():
         print(f' * saved {fn}')
 
 
-    def _plot_detailed_predictions(idx, output_folder = '.'):
-        
-        
-        
-        
-        
-        
-        return None
 
 
-
-    def _plot_error_signals(U, Y_actual, Y_predicted, name, output_folder = '.'):
+    def _plot_error_signals(U, Y_actual, Y_predicted, name, output_folder = '.', N_lines_max = None):
         
         error = Y_actual-Y_predicted
         
+        # limit number of lines to plot
+        if N_lines_max == None:
+            IU = np.linspace(0, U.shape[2]-1, U.shape[2], dtype = int)
+            IY = np.linspace(0, Y_actual.shape[2]-1, Y_actual.shape[2], dtype = int)
+        else:
+            IU = np.linspace(0, U.shape[2]-1, np.min([U.shape[2], N_lines_max]), dtype = int)
+            IY = np.linspace(0, Y_actual.shape[2]-1, np.min([Y_actual.shape[2], N_lines_max]), dtype = int)
+        
+        
         fig, ax = plt.subplots(3, 1)
         fig.set_dpi(200)
-        ax[0].plot(U[0, :, :].cpu().detach().numpy())
-        ax[0].set_title(f'inputs ({U.shape[-1]})')
+        ax[0].plot(U[0, :, IU].cpu().detach().numpy())
+        ax[0].set_title(f'inputs ({U.shape[-1]}, {len(IU)} plotted)')
         
-        ax[1].plot(Y_actual[0, :, :].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
-        ax[1].plot(Y_predicted[0, :, :].cpu().detach().numpy())
-        ax[1].set_title(f'outputs ({Y_predicted.shape[-1]})')
+        ax[1].plot(Y_predicted[0, :, IY].cpu().detach().numpy())
+        ax[1].plot(Y_actual[0, :, IY].cpu().detach().numpy(), linestyle = '--', color = 'k', linewidth = .5)
+        ax[1].set_title(f'outputs ({Y_predicted.shape[-1]}, {len(IY)} plotted)')
         
-        ax[2].plot(error[0, :, :].cpu().detach().numpy())
-        ax[2].set_title(f'error ({error.shape[-1]})')
+        ax[2].plot(error[0, :, IY].cpu().detach().numpy())
+        ax[2].set_title(f'error ({error.shape[-1]}, {len(IY)} plotted)')
         
         for i in range(3):
             ax[i].grid(c = [.9, .9, .9])

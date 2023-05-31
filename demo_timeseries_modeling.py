@@ -16,13 +16,13 @@ batch_size = 20                                  # will load up to this many loa
 test_frac = .3                                  # fraction of data to use for testing
 
 # input autoencoder
-N_epochs_autoencoderX = 500                    # epochs to train autoencoder
+N_epochs_autoencoderX = 50                    # epochs to train autoencoder
 trial_dims_autoencoderX = [1, N_inputs]         # list of compressed dimensions to try
 N_layers_autoencoderX = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 learn_rate_autoencoderX = .01               # learn rate of autoencoder
 
 # output autoencoder
-N_epochs_autoencoderY = 500                  # epochs to train autoencoder
+N_epochs_autoencoderY = 50                  # epochs to train autoencoder
 trial_dims_autoencoderY = [1, N_outputs]        # list of compressed dimensions to try
 N_layers_autoencoderY = 1                       # autoencoder layers (start with 1, then increase if a more complicated model is needed)
 learn_rate_autoencoderY = .01                   # learn rate of autoencoder
@@ -32,11 +32,15 @@ N_dim_X_autoencoder = N_inputs                  # chosen number of dimensions to
 N_dim_Y_autoencoder = N_outputs                 # chosen number of dimensions to encode outputs
 
 # timeseries model
-N_epochs_RNN = 1000                              # epochs to train timeseries model (RNN)
+N_epochs_RNN = 100                              # epochs to train timeseries model (RNN)
 N_layers_RNN = 1                                # RNN layers (start with 1, then increase if a more complicated model is needed)
 N_hidden_dim_RNN = 10                          # number of features in hidden state h
 learn_rate_RNN = .01                            # learn rate of the RNN
 N_timesteps_steady_state_RNN = 100               # number of timesteps for the solution to reach steady-state
+
+# plotting
+N_lines_max = 10  # number of curves to display on a single graph max
+
 
 #%% PIPELINE
 
@@ -57,8 +61,8 @@ NNTS.normalize_and_reduce_dimensionality(N_dim_X_autoencoder, N_dim_Y_autoencode
 NNTS.train_timeseries_model(N_hidden_dim_RNN, N_layers_RNN, N_timesteps_steady_state_RNN, N_epochs_RNN, learn_rate_RNN, ) # trains timeseries model
 NNTS.save_model() # save model to pkl file
 NNTS.assess_fit() # assses fit of the final model
-NNTS.plot_detailed_predictions() # plot intermediate signals, including autoenencoder errors
-NNTS.plot_predictions() # plot normalized predictions
+NNTS.plot_detailed_predictions(N_lines_max = N_lines_max) # plot intermediate signals, including autoenencoder errors
+NNTS.plot_predictions(N_lines_max = N_lines_max) # plot normalized predictions
 NNTS.wrapup() # wrap up study
 
 #%%
