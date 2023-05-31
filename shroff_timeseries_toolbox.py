@@ -507,7 +507,12 @@ class NeuralNetworkTimeSeries():
             results =  self._get_all_pipeline_intermediate_results(X_raw, Y_raw)   
     
             def _prep(x):
-                return x[0, :, :].cpu().detach().numpy()
+                
+                if N_lines_max == None:
+                    return x[0, :, :].cpu().detach().numpy()
+                else:
+                    IX = np.linspace(0, x.shape[2]-1, N_lines_max, dtype = int)
+                    return x[0, :, IX].cpu().detach().numpy()
             
             fig, ax = plt.subplots(8, 1)
             fig.set_size_inches((8, 20))
@@ -539,7 +544,7 @@ class NeuralNetworkTimeSeries():
             ax[7].plot(_prep(results['Y_normalized_prediction_error']))
             ax[7].set_title('normalized output prediction error (predicted - actual)')   
             
-            fig.suptitle(f'{name}')
+            fig.suptitle(f'{name} ({N_lines_max} lines plotted maximum)')
             fig.tight_layout(pad = 2)
             fn = os.path.join(output_folder, f'{name}.pdf')
             fig.savefig(fn)

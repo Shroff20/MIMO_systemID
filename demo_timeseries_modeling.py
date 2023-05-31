@@ -39,7 +39,7 @@ learn_rate_RNN = .01                            # learn rate of the RNN
 N_timesteps_steady_state_RNN = 100               # number of timesteps for the solution to reach steady-state
 
 # plotting
-N_lines_max = 10  # number of curves to display on a single graph max
+N_lines_max = 2  # number of curves to display on a single graph max
 
 
 #%% PIPELINE
