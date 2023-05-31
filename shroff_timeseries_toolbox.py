@@ -278,7 +278,7 @@ class NeuralNetworkTimeSeries():
         
         
         
-    def train_timeseries_model(self, N_hidden_dim, N_layers, N_epochs, learn_rate = .001, verbose = True, gradiant_clip = True):
+    def train_timeseries_model(self, N_hidden_dim, N_layers, N_timesteps_steady_state_RNN, N_epochs, learn_rate = .001, verbose = True, gradiant_clip = True):
         
         print_header('train timeseries model')
 
@@ -289,7 +289,7 @@ class NeuralNetworkTimeSeries():
         N_inputs = data['X'].shape[-1]
         N_outputs =  data['Y'].shape[-1]
                 
-        model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers, device = self.device,)
+        model = GRUNet(input_dim = N_inputs, hidden_dim = N_hidden_dim, output_dim = N_outputs, n_layers = N_layers, n_steps_ss = N_timesteps_steady_state_RNN, device = self.device,)
         
         print(f' * initialized GRU model with {N_inputs} inputs, {N_outputs} outputs, {N_layers} layers, {N_hidden_dim} hidden dims')
         
@@ -825,7 +825,7 @@ class NeuralNetworkTimeSeries():
             
     
 class GRUNet(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, n_layers, device, drop_prob=0.2):
+    def __init__(self, input_dim, hidden_dim, output_dim, n_layers, n_steps_ss, device, drop_prob=0.2):
         super(GRUNet, self).__init__()
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
@@ -838,15 +838,24 @@ class GRUNet(nn.Module):
         self.max_error = None
         self.mean_error = None
         self.device = device
+        self.n_steps_ss = n_steps_ss
         #self.relu = nn.ReLU()
         
     def forward(self, x):
+        
+
+        # append the input at the first timestep before the sequence to account for time to get to ss
+        x0 = x[:, [0], :].repeat(1, self.n_steps_ss, 1)       
+        x = torch.cat ([x0, x], dim = 1)
+        
         h = self.init_hidden(x.shape[0])
         h = h.data
         out, h = self.gru(x, h)
-        #out = self.fc(self.relu(out[:,-1]))
+        out = out[:, self.n_steps_ss:, :] # trim off the first data that involves getting to steady-state
         out = self.fc(out)
-        #out = self.relu(out)
+        
+        
+    
         return out, h
     
     def init_hidden(self, batch_size):
